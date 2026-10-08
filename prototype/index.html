@@ -1,0 +1,1225 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Meeting Controller</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* Tokens mirror lib/core/theme/app_colors.dart */
+:root{
+  --red-900:#8E0010; --red-700:#C20014; --red-600:#E30613; --red-400:#FF4D4F; --red-100:#FFE5E6; --red-50:#FFF4F4;
+  --bg:#F7F8FA; --surface:#FFFFFF; --border:#E6E8EC; --text:#14161A; --text-2:#6B7280; --muted:#9CA3AF; --disabled:#C9CDD4;
+  --online:#16A34A; --warn:#F59E0B;
+  --grad:linear-gradient(135deg,var(--red-600),var(--red-400));
+  --grad-brand:linear-gradient(135deg,var(--red-900) 0%,var(--red-600) 55%,var(--red-400) 100%);
+  --shadow-red:0 8px 20px -8px rgba(227,6,19,.55);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#16181C;color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
+ul{list-style:none}
+svg.i{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.muted{color:var(--text-2)}
+
+/* ---------- Preview bar (outside the app) ---------- */
+.preview-bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 16px;color:#AAB0BA;font-size:13px;background:#0F1114;border-bottom:1px solid #26292F}
+.preview-bar b{color:#fff;font-weight:600}
+.pv-seg{display:flex;background:#1D2026;border-radius:10px;padding:3px;gap:2px;margin-left:auto}
+.pv-seg button{padding:6px 12px;border-radius:8px;color:#AAB0BA;font-size:12.5px;font-weight:500}
+.pv-seg button.on{background:var(--red-600);color:#fff}
+.pv-size{color:#7D838D;font-variant-numeric:tabular-nums;min-width:120px;text-align:right}
+.stage{position:relative;height:calc(100% - 48px);display:grid;place-items:center;overflow:hidden}
+.app{position:relative;background:var(--bg);container-type:inline-size;container-name:app;overflow:hidden}
+.stage.fit .app{width:100%;height:100%}
+.stage.framed .app{flex:none;border-radius:28px;box-shadow:0 0 0 12px #2A2D33,0 0 0 13px #3A3E45,0 30px 80px rgba(0,0,0,.5)}
+.view{height:100%}
+
+/* ---------- Shell ---------- */
+.shell{display:flex;height:100%}
+.rail{width:88px;flex:none;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 10px;gap:6px}
+.nav-item{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:64px;border-radius:14px;color:var(--text-2);font-size:11px;font-weight:600;transition:background .15s,color .15s}
+.nav-item:hover{background:var(--bg)}
+.nav-item .i{width:22px;height:22px}
+.nav-item.active{color:var(--red-600);background:var(--red-50)}
+.nav-item.active::before{content:"";position:absolute;left:-10px;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;background:var(--grad)}
+.rail-spacer{flex:1}
+.content{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:72px;flex:none;display:flex;align-items:center;gap:12px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+.topbar .spacer{flex:1}
+.main{flex:1;overflow-y:auto;padding:24px}
+.wordmark{font-weight:900;font-style:italic;font-size:24px;letter-spacing:-1px;line-height:1;background:var(--grad-brand);-webkit-background-clip:text;background-clip:text;color:transparent;padding-right:4px}
+.wordmark.light{background:none;color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.pill .i{width:15px;height:15px}
+.pill-room{background:var(--red-50);color:var(--red-700)}
+.pill-live{background:var(--grad);color:#fff;box-shadow:var(--shadow-red)}
+.pill-soft{background:var(--bg);color:var(--text-2);border:1px solid var(--border)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.dot.pulse{animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.75)}70%{box-shadow:0 0 0 7px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+.conn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600}
+.conn .i{width:18px;height:18px}
+.conn.ok{color:var(--online)} .conn.err{color:var(--red-700)}
+.clock{font-size:20px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.avatar{width:44px;height:44px;border-radius:12px;background:var(--grad);color:#fff;display:grid;place-items:center;font-weight:700;font-size:14px}
+.banner{display:flex;align-items:center;gap:12px;padding:10px 24px;background:var(--red-50);color:var(--red-700);border-bottom:1px solid var(--red-100);font-size:13.5px}
+.banner .btn{margin-left:auto}
+
+/* ---------- Buttons & controls ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:12px;font-weight:600;font-size:14px;white-space:nowrap;transition:transform .1s,box-shadow .15s,background .15s,border-color .15s}
+.btn:active{transform:scale(.98)}
+.btn .i{width:18px;height:18px}
+.btn-primary{background:var(--grad);color:#fff;box-shadow:var(--shadow-red)}
+.btn-danger{background:var(--red-700);color:#fff}
+.btn-ghost{background:var(--surface);border:1.5px solid var(--border)}
+.btn-ghost:hover{border-color:#D4D7DD}
+.btn-outline-red{background:var(--red-50);border:1.5px solid var(--red-100);color:var(--red-700)}
+.btn-sm{min-height:44px;padding:0 14px;font-size:13px;border-radius:10px}
+.btn-block{width:100%}
+.btn[disabled]{opacity:.55;pointer-events:none}
+.link{display:inline-flex;align-items:center;gap:4px;color:var(--red-600);font-weight:600;font-size:13px;min-height:44px}
+.link .i{width:16px;height:16px}
+.spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite;flex:none;display:inline-block}
+.spinner.sm{width:12px;height:12px;border-width:2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.switch{position:relative;width:52px;height:32px;border-radius:999px;background:var(--disabled);flex:none;transition:background .2s}
+.switch::before{content:"";position:absolute;inset:-8px}
+.switch span{position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s;display:grid;place-items:center;color:var(--red-600)}
+.switch.on{background:var(--grad)}
+.switch.on span{transform:translateX(20px)}
+.switch.busy{pointer-events:none;opacity:.8}
+
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.chips.c2{grid-template-columns:repeat(2,1fr)}
+.chip{min-height:56px;border-radius:12px;background:var(--bg);border:1.5px solid transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:600;color:var(--text-2);transition:background .15s,border-color .15s,color .15s}
+.chip.inline{flex-direction:row;gap:8px;min-height:48px;font-size:13px}
+.chip:hover{background:#EEF0F3}
+.chip.active{background:var(--red-50);border-color:var(--red-600);color:var(--red-700)}
+.round-btn{width:48px;height:48px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface);display:grid;place-items:center;transition:transform .1s,border-color .15s,color .15s;flex:none}
+.round-btn:hover{border-color:var(--red-600);color:var(--red-600)}
+.round-btn:active{transform:scale(.92)}
+.round-btn.on{background:var(--red-50);border-color:var(--red-600);color:var(--red-700)}
+.round-btn.sm{width:44px;height:44px}
+
+.sl{display:flex;flex-direction:column;gap:6px}
+.sl-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.sl-head > span:first-child{flex:1;display:flex;align-items:center;gap:6px}
+.sl-head .i{width:16px;height:16px;color:var(--text-2)}
+.sl-head output{font-variant-numeric:tabular-nums;color:var(--text-2);min-width:40px;text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:32px;background:transparent;cursor:pointer;--p:50%}
+input[type=range]:focus{outline:none}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:99px;background:linear-gradient(90deg,var(--red-600),var(--red-400)) 0/var(--p) 100% no-repeat,var(--border)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--red-600);margin-top:-9px;box-shadow:0 2px 8px rgba(227,6,19,.35)}
+input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 6px var(--red-100)}
+input[type=range]::-moz-range-track{height:8px;border-radius:99px;background:var(--border)}
+input[type=range]::-moz-range-progress{height:8px;border-radius:99px;background:var(--grad)}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--red-600)}
+
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:999px;white-space:nowrap}
+.badge .i{width:13px;height:13px}
+.badge.ok{color:var(--online);background:#ECFDF3}
+.badge.off{color:var(--text-2);background:var(--bg)}
+.badge.err{color:var(--red-700);background:var(--red-50)}
+.badge.wait{color:#B45309;background:#FFFBEB}
+.sdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px;background:var(--online)}
+.sdot.wait{background:var(--warn)} .sdot.err{background:var(--red-600)} .sdot.off{background:var(--muted)}
+
+/* ---------- Page ---------- */
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
+.page-head h1{font-size:26px;font-weight:800;letter-spacing:-.6px}
+.page-head p{font-size:14px;color:var(--text-2);margin-top:4px}
+.sec-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}
+.sec-title h2{font-size:15px;font-weight:700}
+.sec-title .muted{font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:20px}
+
+/* Quick scene */
+.scenes{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.scene{display:flex;align-items:center;gap:12px;padding:14px 16px;min-height:76px;border-radius:16px;background:var(--surface);border:1px solid var(--border);text-align:left;transition:border-color .15s,box-shadow .2s,transform .1s;min-width:0}
+.scene:hover{border-color:#D4D7DD}
+.scene:active{transform:scale(.98)}
+.scene[disabled]{cursor:wait}
+.scene-ic{width:44px;height:44px;border-radius:12px;background:var(--red-50);color:var(--red-600);display:grid;place-items:center;flex:none}
+.scene-t{min-width:0}
+.scene b{display:block;font-size:14px;font-weight:700}
+.scene small{display:block;font-size:12px;color:var(--text-2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scene.active{background:var(--grad-brand);border-color:transparent;color:#fff;box-shadow:var(--shadow-red)}
+.scene.active .scene-ic{background:rgba(255,255,255,.18);color:#fff}
+.scene.active small{color:rgba(255,255,255,.85)}
+.scene.end .scene-ic{background:var(--bg);color:var(--text)}
+
+/* Device grid & tiles */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.tile{display:flex;flex-direction:column;gap:18px;transition:box-shadow .2s}
+.tile.on{box-shadow:0 10px 28px -16px rgba(227,6,19,.35)}
+.tile-head{display:flex;align-items:flex-start;gap:12px}
+.tile-icon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--bg);color:var(--muted);flex:none;transition:background .2s,color .2s}
+.tile.on .tile-icon{background:var(--grad);color:#fff;box-shadow:var(--shadow-red)}
+.tile-title{flex:1;min-width:0}
+.tile-title h3{font-size:16px;font-weight:700;letter-spacing:-.2px}
+.tile-title p{font-size:12.5px;color:var(--text-2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile-body{display:flex;flex-direction:column;gap:16px;flex:1;transition:opacity .2s}
+.tile.off .tile-body,.tile.pending .tile-body{pointer-events:none}
+.tile.off .tile-body{opacity:.45}
+.temp{display:flex;align-items:center;justify-content:center;gap:20px}
+.temp-val{font-size:44px;font-weight:800;letter-spacing:-2px;font-variant-numeric:tabular-nums;min-width:100px;text-align:center;line-height:1}
+.temp-val sup{font-size:15px;font-weight:600;letter-spacing:0;color:var(--text-2);margin-left:2px}
+.swatches{display:flex;gap:10px;flex-wrap:wrap}
+.swatch{width:44px;height:44px;border-radius:50%;border:2px solid rgba(0,0,0,.06);display:grid;place-items:center;color:var(--text);transition:box-shadow .15s}
+.swatch .i{width:18px;height:18px;opacity:0}
+.swatch.active{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--red-600)}
+.swatch.active .i{opacity:1}
+.swatch-row{display:flex;flex-direction:column;gap:8px}
+.swatch-row > span{font-size:13px;font-weight:600}
+.door-state{display:flex;align-items:center;gap:14px;padding:14px;border-radius:14px;background:var(--bg)}
+.door-state .big{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:#fff;flex:none}
+.door-state .big .i{width:24px;height:24px}
+.door-state.locked .big{color:var(--red-600)} .door-state.open .big{color:var(--online)}
+.door-state b{font-size:16px;display:block} .door-state small{font-size:12.5px;color:var(--text-2)}
+.cam{height:128px;border-radius:14px;background:var(--bg);border:1.5px dashed var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);font-size:13px;font-weight:500;position:relative;overflow:hidden}
+.cam.big{height:220px}
+.cam.live{border:0;background:radial-gradient(120% 90% at 50% 100%,#3A3F48 0%,#1B1D22 70%);color:#fff}
+.cam .live-badge{position:absolute;top:10px;left:10px;display:flex;align-items:center;gap:5px;background:var(--red-600);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:6px}
+.cam .live-badge i{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1.2s infinite}
+@keyframes blink{50%{opacity:.2}}
+.cam .people{position:absolute;bottom:0;left:50%;transform:translateX(-50%);display:flex;gap:14px;align-items:flex-end}
+.cam .people span{width:34px;height:30px;border-radius:17px 17px 4px 4px;background:rgba(255,255,255,.16);position:relative}
+.cam .people span::before{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,.2);left:7px;top:-24px}
+.cam.big .people span{width:52px;height:46px;border-radius:26px 26px 6px 6px}
+.cam.big .people span::before{width:30px;height:30px;left:11px;top:-36px}
+.cam .frame{position:absolute;inset:18px 22% 6px;border:2px solid transparent;border-image:linear-gradient(#fff,#fff) 1;clip-path:polygon(0 0,18% 0,18% 3px,3px 3px,3px 18%,0 18%,0 100%,0 100%,0 82%,3px 82%,3px calc(100% - 3px),18% calc(100% - 3px),18% 100%,82% 100%,82% calc(100% - 3px),calc(100% - 3px) calc(100% - 3px),calc(100% - 3px) 82%,100% 82%,100% 18%,calc(100% - 3px) 18%,calc(100% - 3px) 3px,82% 3px,82% 0,100% 0,100% 100%,0 100%);opacity:.7}
+.cam .cam-cap{position:absolute;top:10px;right:10px;font-size:11px;font-weight:600;background:rgba(0,0,0,.4);padding:3px 8px;border-radius:6px}
+
+/* Device management */
+.tabs{display:flex;gap:4px;padding:5px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow-x:auto;scrollbar-width:none;margin-bottom:16px;width:max-content;max-width:100%}
+.tabs::-webkit-scrollbar{display:none}
+.tab{position:relative;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-radius:10px;font-size:14px;font-weight:600;color:var(--text-2);white-space:nowrap;transition:background .15s,color .15s}
+.tab .i{width:18px;height:18px}
+.tab:hover{background:var(--bg)}
+.tab.active{background:var(--grad);color:#fff;box-shadow:var(--shadow-red)}
+.warn-dot{width:7px;height:7px;border-radius:50%;background:var(--warn);display:inline-block}
+.dm{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+.units{display:flex;flex-direction:column;gap:8px;scrollbar-width:none}
+.unit{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1.5px solid var(--border);text-align:left;min-height:68px;transition:border-color .15s,background .15s}
+.unit:hover{border-color:#D4D7DD}
+.unit.active{border-color:var(--red-600);background:var(--red-50)}
+.unit-ic{width:40px;height:40px;border-radius:12px;background:var(--bg);display:grid;place-items:center;color:var(--text-2);flex:none}
+.unit.active .unit-ic{background:#fff;color:var(--red-600)}
+.unit-t{flex:1;min-width:0}
+.unit-t b{display:block;font-size:14px} .unit-t small{font-size:12px;color:var(--text-2)}
+.panel-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.panel-head .tile-icon{background:var(--grad);color:#fff;box-shadow:var(--shadow-red)}
+.panel-head .ph-t{flex:1;min-width:160px}
+.panel-head h2{font-size:20px;font-weight:800;letter-spacing:-.4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.panel-head p{font-size:13px;color:var(--text-2);margin-top:2px}
+.rows{display:flex;flex-direction:column;gap:12px}
+.rows.disabled{opacity:.45;pointer-events:none}
+.rows .dim{opacity:.45;pointer-events:none}
+.rows-sub{display:flex;flex-direction:column;gap:12px;transition:opacity .2s}
+.row{display:flex;align-items:center;justify-content:space-between;gap:14px 24px;flex-wrap:wrap;padding:18px 20px;border:1px solid var(--border);border-radius:16px;background:var(--surface)}
+.row-text{min-width:180px;flex:1}
+.row-text h4{font-size:15px;font-weight:700}
+.row-text p{font-size:12.5px;color:var(--text-2);margin-top:2px}
+.row-ctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.row-full{flex-basis:100%;display:flex;flex-direction:column;gap:14px}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opt{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:0 16px 0 6px;border-radius:999px;border:1.5px solid var(--border);background:var(--surface);font-size:13px;font-weight:600;color:var(--text-2);transition:background .15s,border-color .15s,color .15s}
+.opt:hover{border-color:#D4D7DD}
+.opt .oi{width:34px;height:34px;border-radius:50%;background:var(--bg);display:grid;place-items:center}
+.opt .oi .i{width:16px;height:16px}
+.opt.noicon{padding:0 16px}
+.opt.active{border-color:var(--red-600);color:var(--red-700);background:var(--red-50)}
+.opt.active .oi{background:var(--grad);color:#fff}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper .val{min-width:76px;height:48px;border:1.5px solid var(--border);border-radius:12px;display:grid;place-items:center;font-weight:700;font-size:18px;font-variant-numeric:tabular-nums}
+.alert{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:14px;background:#FFFBEB;color:#92400E;border:1px solid #FDE68A;font-size:13.5px;margin-bottom:12px}
+.alert.err{background:var(--red-50);color:var(--red-700);border-color:var(--red-100)}
+.alert .i{margin-top:1px}
+.alert .a-body{flex:1}
+.alert b{display:block;margin-bottom:2px}
+.ptz-wrap{display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+.ptz{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px}
+.ptz .round-btn{border-radius:14px}
+.ptz .home{background:var(--grad);color:#fff;border:0}
+.ptz-side{display:flex;flex-direction:column;gap:12px;flex:1;min-width:220px}
+.ptz-side > span{font-size:13px;font-weight:600}
+.log li{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+.log li:last-child{border-bottom:0}
+.log .li-ic{width:34px;height:34px;border-radius:10px;background:var(--bg);display:grid;place-items:center;color:var(--text-2);flex:none}
+.log .li-ic .i{width:16px;height:16px}
+.log .li-t{flex:1;min-width:0}
+.log .li-t small{display:block;color:var(--text-2);font-size:12px}
+.log time{color:var(--text-2);font-size:12px;font-variant-numeric:tabular-nums}
+
+/* Settings */
+.settings-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:16px}
+.card-head{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.card-head.between{justify-content:space-between;flex-wrap:wrap}
+.card-head .ci{width:40px;height:40px;border-radius:12px;background:var(--red-50);color:var(--red-600);display:grid;place-items:center;flex:none}
+.card-head h3{font-size:16px;font-weight:700}
+.card-head p{font-size:12.5px;color:var(--text-2)}
+.card-head .ch-t{flex:1}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:12px 16px;padding:14px 0;border-top:1px solid var(--border);flex-wrap:wrap}
+.card-head + .srow{border-top:0}
+.srow .t{flex:1;min-width:180px}
+.srow .t b{font-size:14px;font-weight:600;display:block}
+.srow .t small{font-size:12.5px;color:var(--text-2)}
+.srow.col{flex-direction:column;align-items:stretch}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:600}
+.input{height:48px;border:1.5px solid var(--border);border-radius:12px;padding:0 14px;background:var(--surface);font-size:14px;width:100%;outline:none;transition:border-color .15s,box-shadow .15s}
+.input:focus{border-color:var(--red-600);box-shadow:0 0 0 4px var(--red-100)}
+.input.err{border-color:var(--red-600)}
+/* Custom dropdown: native <select> menus are drawn by the OS (unstyled, unscaled) */
+.dd{position:relative;min-width:250px}
+.dd-btn{display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}
+.dd-btn .dd-val{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.dd-btn .dd-val small{font-weight:400;color:var(--text-2);margin-left:4px}
+.dd-btn .i{width:18px;height:18px;color:var(--text-2);transition:transform .15s}
+.dd.open .dd-btn{border-color:var(--red-600);box-shadow:0 0 0 4px var(--red-100)}
+.dd.open .dd-btn .i{transform:rotate(180deg)}
+.dd-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:40;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 16px 40px -12px rgba(16,24,40,.28);animation:pop .14s ease-out}
+.dd-opt{display:flex;align-items:center;gap:10px;width:100%;min-height:48px;padding:6px 12px;border-radius:10px;text-align:left;transition:background .12s}
+.dd-opt:hover{background:var(--bg)}
+.dd-opt.sel{background:var(--red-50)}
+.dd-opt .t{flex:1;min-width:0}
+.dd-opt b{display:block;font-size:14px;font-weight:600}
+.dd-opt.sel b{color:var(--red-700)}
+.dd-opt small{display:block;font-size:12px;color:var(--text-2)}
+.dd-opt .i{width:18px;height:18px;color:var(--red-600)}
+select.input{appearance:none;-webkit-appearance:none;padding-right:40px;cursor:pointer;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center/18px}
+.input-wrap{position:relative}
+.input-wrap .input{padding-right:52px}
+.input-wrap .eye{position:absolute;right:2px;top:2px;width:44px;height:44px;display:grid;place-items:center;color:var(--text-2)}
+.seg{display:inline-flex;background:var(--bg);border-radius:12px;padding:4px;gap:2px}
+.seg button{min-height:40px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:var(--text-2);display:inline-flex;align-items:center;gap:6px}
+.seg button .i{width:16px;height:16px}
+.seg button.active{background:var(--surface);color:var(--red-700);box-shadow:0 1px 3px rgba(16,24,40,.12)}
+.seg.full{display:flex;width:100%}
+.seg.full button{flex:1;justify-content:center;min-height:44px}
+.conn-status{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:var(--bg);font-size:13px}
+.conn-status b{font-weight:600}
+.conn-status .ms{margin-left:auto;color:var(--text-2);font-variant-numeric:tabular-nums}
+
+/* User */
+.user-layout{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;align-items:start}
+.profile{text-align:center;overflow:hidden}
+.profile-cover{height:88px;margin:-20px -20px 0;background:var(--grad-brand);position:relative}
+.profile-cover::after{content:"";position:absolute;width:180px;height:180px;border-radius:50%;border:1px solid rgba(255,255,255,.25);right:-50px;top:-80px}
+.profile-avatar{width:84px;height:84px;border-radius:24px;background:var(--grad);border:4px solid #fff;margin:-42px auto 10px;display:grid;place-items:center;color:#fff;font-size:28px;font-weight:800;position:relative;box-shadow:var(--shadow-red)}
+.profile h3{font-size:18px;font-weight:800}
+.profile .uname{font-size:13px;color:var(--text-2);margin:2px 0 10px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--border);font-size:13.5px;text-align:left}
+.kv span{color:var(--text-2)} .kv b{font-weight:600;text-align:right}
+.profile-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.profile-actions .full{grid-column:1/-1}
+.role{display:inline-flex;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px}
+.role.Admin{background:var(--grad);color:#fff}
+.role.Operator{background:var(--red-50);color:var(--red-700)}
+.role.Tamu{background:var(--bg);color:var(--text-2)}
+.search{position:relative;margin:10px 0 6px}
+.search .i{position:absolute;left:14px;top:14px;color:var(--text-2)}
+.search .input{padding-left:44px}
+.table-wrap{overflow-x:auto}
+.table{width:100%;border-collapse:collapse}
+.table th{text-align:left;font-size:11.5px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.5px;padding:12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.table td{padding:12px;border-bottom:1px solid var(--border);font-size:14px;vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.table .muted-row td{color:var(--text-2)}
+.who{display:flex;align-items:center;gap:12px}
+.mini-av{width:40px;height:40px;border-radius:12px;background:var(--red-50);color:var(--red-700);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.who b{display:block;font-size:14px} .who small{font-size:12px;color:var(--text-2)}
+.empty{padding:28px;text-align:center;color:var(--text-2);font-size:14px}
+
+/* Login */
+.login{display:grid;grid-template-columns:1.05fr 1fr;height:100%;background:var(--surface)}
+.brand{position:relative;overflow:hidden;background:var(--grad-brand);color:#fff;padding:40px 48px;display:flex;flex-direction:column;gap:28px}
+.brand::before{content:"";position:absolute;width:560px;height:560px;border-radius:50%;border:1px solid rgba(255,255,255,.18);right:-220px;top:-200px}
+.brand::after{content:"";position:absolute;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.16),transparent 70%);left:-160px;bottom:-160px}
+.brand > *{position:relative;z-index:1}
+.brand-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pill-glass{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff}
+.brand-mid{margin-top:auto}
+.brand h1{font-size:44px;font-weight:800;letter-spacing:-1.4px;line-height:1.05}
+.brand .lead{font-size:16px;opacity:.88;margin-top:14px;max-width:440px;line-height:1.5}
+.glass{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.24);backdrop-filter:blur(10px);border-radius:20px;padding:18px 22px;display:flex;gap:20px;align-items:center;max-width:480px}
+.brand-clock{font-size:52px;font-weight:800;letter-spacing:-2px;line-height:1;font-variant-numeric:tabular-nums}
+.brand-date{font-size:13px;opacity:.85;margin-top:6px}
+.glass-sep{width:1px;align-self:stretch;background:rgba(255,255,255,.25)}
+.glass-room small{display:flex;align-items:center;gap:5px;font-size:12px;opacity:.85}
+.glass-room small .i{width:14px;height:14px}
+.glass-room b{display:block;font-size:16px;margin:4px 0 2px}
+.glass-room span{font-size:13px;opacity:.85}
+.login-side{display:grid;place-items:center;padding:40px;overflow-y:auto}
+.login-form{width:100%;max-width:400px;display:flex;flex-direction:column;gap:18px}
+.login-form h2{font-size:30px;font-weight:800;letter-spacing:-.8px}
+.login-form .sub{font-size:14px;color:var(--text-2);margin-top:4px}
+.form-stack{display:flex;flex-direction:column;gap:14px}
+.check{display:flex;align-items:center;gap:10px;font-size:13.5px;min-height:44px;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--red-600)}
+.form-err{display:flex;align-items:center;gap:8px;color:var(--red-700);font-size:13px;font-weight:500}
+.form-err .i{width:16px;height:16px}
+.hint{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--text-2);background:var(--bg);padding:12px 14px;border-radius:12px}
+.hint .i{width:16px;height:16px;margin-top:1px}
+
+/* Modal & toast */
+.modal-backdrop{position:absolute;inset:0;background:rgba(17,19,23,.45);display:grid;place-items:center;padding:24px;z-index:50;animation:fade .15s}
+.modal{width:100%;max-width:440px;background:#fff;border-radius:24px;padding:28px;box-shadow:0 24px 64px rgba(0,0,0,.25);animation:pop .18s ease-out;max-height:100%;overflow-y:auto}
+.modal-ic{width:56px;height:56px;border-radius:16px;background:var(--red-50);color:var(--red-600);display:grid;place-items:center;margin-bottom:16px}
+.modal-ic .i{width:26px;height:26px}
+.modal h3{font-size:20px;font-weight:800;letter-spacing:-.3px}
+.modal > p{color:var(--text-2);font-size:14px;margin-top:6px;line-height:1.5}
+.modal .form-stack{margin-top:18px}
+.modal-actions{display:flex;gap:10px;margin-top:24px}
+.modal-actions .btn{flex:1}
+@keyframes fade{from{opacity:0}}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(8px)}}
+.toast-root{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;align-items:center;z-index:60;pointer-events:none;width:max-content;max-width:calc(100% - 32px)}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 18px 12px 12px;border-radius:14px;background:#14161A;color:#fff;font-size:14px;font-weight:500;box-shadow:0 12px 32px rgba(0,0,0,.25);animation:toastIn .22s ease-out}
+.toast .ti{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--online)}
+.toast .ti .i{width:15px;height:15px;stroke-width:2.5}
+.toast.err .ti{background:var(--red-600)}
+.toast.info .ti{background:#4B5563}
+.toast.out{opacity:0;transform:translateY(8px);transition:.2s}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}}
+
+/* ---------- Fixed landscape (matches lib/core/layout/app_layout.dart) ---------- */
+.rail{width:220px;padding:20px 14px}
+.nav-item{flex-direction:row;justify-content:flex-start;gap:12px;padding:0 16px;min-height:52px;font-size:14px}
+.nav-item.active::before{left:-14px}
+</style>
+</head>
+<body>
+<div class="preview-bar">
+  <b>Prototype</b><span>Smart Meeting Controller · acuan UI untuk Flutter</span>
+  <span class="pv-seg-label" style="margin-left:auto">Tablet landscape 1280×800</span>
+  <span class="pv-size" id="pv-size"></span>
+</div>
+<div class="stage fit" id="stage">
+  <div class="app" id="app">
+    <div class="view" id="view"></div>
+    <div id="modal-root"></div>
+    <div class="toast-root" id="toast-root" aria-live="polite"></div>
+  </div>
+</div>
+
+<script>
+/* ================= Icons (lucide-style, 24x24 stroke) ================= */
+const ICONS = {
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  devices:'<rect x="2" y="4" width="14" height="11" rx="2"/><path d="M6 19h6M9 15v4"/><rect x="18" y="8" width="4" height="11" rx="1"/>',
+  sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  ac:'<rect x="2" y="4" width="20" height="9" rx="2"/><path d="M6 9h12M7 17c0 1.5-1 2-1 3M12 16v5M17 17c0 1.5 1 2 1 3"/>',
+  snow:'<path d="M12 2v20M4.9 4.9l14.2 14.2M2 12h20M4.9 19.1L19.1 4.9M9 4l3 3 3-3M9 20l3-3 3 3"/>',
+  flame:'<path d="M12 22a7 7 0 0 0 7-7c0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-2 2-5 5-5 8a7 7 0 0 0 7 7z"/>',
+  fan:'<path d="M12 12c-3-5 0-9 3-9s3 4 0 9M12 12c5-3 9 0 9 3s-4 3-9 0M12 12c3 5 0 9-3 9s-3-4 0-9M12 12c-5 3-9 0-9-3s4-3 9 0"/>',
+  sparkle:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4M17 19h4"/>',
+  droplet:'<path d="M12 2.7l5.7 5.7a8 8 0 1 1-11.4 0z"/>',
+  bulb:'<path d="M9 18h6M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.2 1 2V17h6v-.3c0-.8.4-1.5 1-2A7 7 0 0 0 12 2z"/>',
+  speaker:'<rect x="5" y="2" width="14" height="20" rx="2"/><circle cx="12" cy="14" r="4"/><circle cx="12" cy="6.5" r="1"/>',
+  volume:'<path d="M11 5L6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/>',
+  micOff:'<path d="M2 2l20 20M15 9.3V5a3 3 0 0 0-5.7-1.3M9 9v3a3 3 0 0 0 5.1 2.1M19 10a7 7 0 0 1-1.1 3.8M5 10a7 7 0 0 0 11.2 5.6M12 17v5"/>',
+  cast:'<path d="M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><path d="M2 12a9 9 0 0 1 8 8M2 16a5 5 0 0 1 4 4M2 20h.01"/>',
+  hdmi:'<path d="M3 8h18v5l-2 3H5l-2-3z"/><path d="M7 11h10"/>',
+  vga:'<path d="M3 7h18l-2 10H5z"/><path d="M8 11h.01M12 11h.01M16 11h.01M10 14h.01M14 14h.01"/>',
+  door:'<path d="M3 22h18M6 22V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v19"/><path d="M14.5 12h.01"/>',
+  lock:'<rect x="4" y="11" width="16" height="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  unlock:'<rect x="4" y="11" width="16" height="11" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.9-1"/>',
+  webcam:'<circle cx="12" cy="10" r="8"/><circle cx="12" cy="10" r="3"/><path d="M7 22h10M12 18v4"/>',
+  video:'<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/>',
+  camOff:'<path d="M2 2l20 20M10.7 6H14a2 2 0 0 1 2 2v3.3l1 1L22 7v10M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>', minus:'<path d="M5 12h14"/>',
+  power:'<path d="M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0"/>',
+  moon:'<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>',
+  wifi:'<path d="M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M2 9a15 15 0 0 1 20 0M12 20h.01"/>',
+  wifiOff:'<path d="M2 2l20 20M8.5 16a5 5 0 0 1 7 0M5 12.5a10 10 0 0 1 4.2-2.4M2 9a15 15 0 0 1 4.4-2.8M14.6 10.4A10 10 0 0 1 19 12.5M10.7 5.1A15 15 0 0 1 22 9M12 20h.01"/>',
+  logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  play:'<path d="M7 4l13 8-13 8z"/>',
+  presentation:'<path d="M2 3h20M4 3v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3M12 16v5M8 21h8"/>',
+  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:'<path d="M2 2l20 20M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c2 0 3.8-.7 5.3-1.7M10 5.1c.6-.1 1.3-.1 2-.1 6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M14.1 14.1a3 3 0 0 1-4.2-4.2"/>',
+  refresh:'<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M3 21v-5h5"/>',
+  chevR:'<path d="M9 6l6 6-6 6"/>', chevL:'<path d="M15 6l-6 6 6 6"/>', chevU:'<path d="M6 15l6-6 6 6"/>', chevD:'<path d="M6 9l6 6 6-6"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
+  contrast:'<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  tune:'<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  pin:'<path d="M12 22s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  edit:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  userPlus:'<circle cx="9" cy="8" r="4"/><path d="M1 21a8 8 0 0 1 16 0M19 8v6M16 11h6"/>',
+  key:'<circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/>',
+  move:'<path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>',
+  capture:'<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/><circle cx="12" cy="12" r="3"/>',
+  alert:'<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  server:'<rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/>',
+  globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/>',
+  tablet:'<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 18h.01"/>',
+  users:'<circle cx="9" cy="7" r="4"/><path d="M2 21v-1a7 7 0 0 1 14 0v1M16 3.1a4 4 0 0 1 0 7.8M22 21v-1a7 7 0 0 0-4-6.3"/>',
+  search:'<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/>',
+  music:'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  hash:'<path d="M4 9h16M4 15h16M10 3L8 21M16 3l-2 18"/>',
+  backspace:'<path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="M18 9l-6 6M12 9l6 6"/>',
+  home:'<path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  zoomIn:'<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/>',
+  bell:'<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+};
+const ic = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = (s, r = document) => r.querySelector(s);
+const safe = { get(k, s = sessionStorage) { try { return s.getItem(k); } catch { return null; } }, set(k, v, s = sessionStorage) { try { s.setItem(k, v); } catch { } } };
+const pad = n => String(n).padStart(2, '0');
+const hm = (d = new Date()) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const dateStr = () => new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+/* ================= Static data ================= */
+const USER = { name: 'Administrator', first: 'Admin', email: 'admin@ruangmeeting.local', initials: 'AD', role: 'Admin' };
+/* Same demo account as lib/features/auth/data/repositories/auth_repository_impl.dart */
+const DEMO = { email: 'admin@ruangmeeting.local', password: 'admin123' };
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const MEETING = { title: 'Rapat Koordinasi Q4', time: '09:00 – 11:00 WIB' };
+const ROOMS = { inovasi: { name: 'Ruang Inovasi', floor: 'Lantai 3' }, kolaborasi: { name: 'Ruang Kolaborasi', floor: 'Lantai 2' }, direksi: { name: 'Ruang Direksi', floor: 'Lantai 5' } };
+const TABLET_ID = 'TAB-INV-01';
+const NAV = [
+  { r: 'dashboard', l: 'Dashboard', i: 'grid' },
+  { r: 'devices', l: 'Perangkat', i: 'devices' },
+  { r: 'settings', l: 'Pengaturan', i: 'sliders' },
+  { r: 'user', l: 'User', i: 'user' },
+];
+const TYPES = {
+  ifp: { label: 'IFP', name: 'Interactive Flat Panel', icon: 'cast' },
+  ac: { label: 'AC', name: 'Air Conditioner', icon: 'ac' },
+  light: { label: 'Lampu', name: 'Pencahayaan', icon: 'bulb' },
+  audio: { label: 'Audio', name: 'Sistem Audio', icon: 'speaker' },
+  camera: { label: 'Kamera', name: 'Kamera Video Conference', icon: 'webcam' },
+  door: { label: 'Pintu', name: 'Akses Pintu', icon: 'door' },
+};
+const AC_MODES = [{ v: 'cool', l: 'Cool', i: 'snow' }, { v: 'heat', l: 'Heat', i: 'flame' }, { v: 'fan', l: 'Fan', i: 'fan' }, { v: 'auto', l: 'Auto', i: 'sparkle' }, { v: 'dry', l: 'Dry', i: 'droplet' }];
+const FAN = [{ v: 'low', l: 'Rendah' }, { v: 'med', l: 'Sedang' }, { v: 'high', l: 'Tinggi' }, { v: 'auto', l: 'Otomatis' }];
+const TIMER = [{ v: 'off', l: 'Tidak' }, { v: '30', l: '30 menit' }, { v: '60', l: '1 jam' }, { v: 'end', l: 'Akhir meeting' }];
+const IFP_POWER = [{ v: 'on', l: 'Hidup', i: 'power' }, { v: 'hibernate', l: 'Hibernasi', i: 'moon' }, { v: 'off', l: 'Mati', i: 'power' }];
+const IFP_MODES = [{ v: 'standar', l: 'Standar', i: 'target' }, { v: 'jelas', l: 'Jelas', i: 'contrast' }, { v: 'cerah', l: 'Cerah', i: 'sun' }, { v: 'custom', l: 'Custom', i: 'tune' }];
+const INPUTS = [{ v: 'hdmi1', l: 'HDMI 1', i: 'hdmi' }, { v: 'hdmi2', l: 'HDMI 2', i: 'hdmi' }, { v: 'vga', l: 'VGA', i: 'vga' }, { v: 'wireless', l: 'Wireless', i: 'cast' }];
+const COLORS = [{ v: 'warm', l: 'Warm White', c: '#FFD9A8' }, { v: 'natural', l: 'Natural', c: '#FFF3DC' }, { v: 'cool', l: 'Cool White', c: '#DCEBFF' }, { v: 'teal', l: 'Teal', c: '#5EEAD4' }, { v: 'violet', l: 'Violet', c: '#C4B5FD' }];
+const ZONES = [{ v: 'depan', l: 'Depan' }, { v: 'tengah', l: 'Tengah' }, { v: 'belakang', l: 'Belakang' }];
+const EQ = [{ v: 'rapat', l: 'Rapat', i: 'users' }, { v: 'presentasi', l: 'Presentasi', i: 'presentation' }, { v: 'video', l: 'Video Call', i: 'video' }, { v: 'musik', l: 'Musik', i: 'music' }];
+const CMODE = [{ v: 'auto', l: 'Auto framing', i: 'capture' }, { v: 'speaker', l: 'Speaker tracking', i: 'mic' }, { v: 'manual', l: 'Manual', i: 'move' }];
+const PRESETS = [{ v: 'ruangan', l: 'Seluruh ruangan' }, { v: 'presenter', l: 'Presenter' }, { v: 'whiteboard', l: 'Whiteboard' }];
+const ACCESS = [{ v: 'kartu', l: 'Kartu akses', i: 'key' }, { v: 'pin', l: 'PIN', i: 'hash' }, { v: 'both', l: 'Kartu + PIN', i: 'shield' }];
+const DELAY = [{ v: '10', l: '10 detik' }, { v: '30', l: '30 detik' }, { v: '60', l: '60 detik' }];
+const lab = (list, v) => (list.find(o => o.v === v) || {}).l || v;
+
+/* Devices: keyed by unit id; dashboard uses the PRIMARY unit of each type. */
+const D = {
+  'IFP-01': { type: 'ifp', name: 'IFP 001', loc: 'Dinding depan', online: true, on: true, power: 'on', volume: 48, mode: 'standar', brightness: 70, input: 'hdmi1' },
+  'IFP-02': { type: 'ifp', name: 'IFP 002', loc: 'Dinding samping', online: false, lastSeen: '08:12', on: false, power: 'off', volume: 30, mode: 'standar', brightness: 60, input: 'hdmi1' },
+  'AC-01': { type: 'ac', name: 'AC 001', loc: 'Plafon tengah', online: true, on: true, temp: 22, mode: 'cool', fan: 'auto', swing: true, timer: 'end' },
+  'LMP-01': { type: 'light', name: 'Lampu Utama', loc: 'Seluruh ruangan', online: true, on: true, brightness: 70, color: 'warm', zones: { depan: true, tengah: true, belakang: true } },
+  'AUD-01': { type: 'audio', name: 'Speaker Ruangan', loc: 'Plafon', online: true, on: true, volume: 65, mic: 80, micMute: false, eq: 'rapat' },
+  'CAM-01': { type: 'camera', name: 'Kamera Utama', loc: 'Atas IFP 001', online: true, on: false, cmode: 'auto', preset: 'ruangan', zoom: 1 },
+  'DR-01': { type: 'door', name: 'Pintu Utama', loc: 'Pintu masuk', online: true, locked: true, autoLock: true, autoDelay: '30', access: 'kartu' },
+};
+const PRIMARY = { ac: 'AC-01', light: 'LMP-01', audio: 'AUD-01', ifp: 'IFP-01', door: 'DR-01', camera: 'CAM-01' };
+
+const SCENES = {
+  meeting: { label: 'Mulai Meeting', icon: 'play', desc: 'AC 22°, lampu 80%, IFP HDMI 1', apply: { 'AC-01': { on: true, temp: 22, mode: 'cool' }, 'LMP-01': { on: true, brightness: 80, color: 'natural' }, 'AUD-01': { on: true, volume: 60, mic: 80, micMute: false, eq: 'rapat' }, 'IFP-01': { on: true, power: 'on', input: 'hdmi1' } } },
+  present: { label: 'Presentasi', icon: 'presentation', desc: 'Lampu redup 40%, layar cerah', apply: { 'LMP-01': { on: true, brightness: 40, color: 'warm' }, 'IFP-01': { on: true, power: 'on', mode: 'cerah' }, 'AUD-01': { on: true, volume: 55, eq: 'presentasi' } } },
+  video: { label: 'Video Call', icon: 'video', desc: 'Kamera & mic aktif, lampu 75%', apply: { 'CAM-01': { on: true, cmode: 'auto' }, 'AUD-01': { on: true, volume: 60, mic: 85, micMute: false, eq: 'video' }, 'LMP-01': { on: true, brightness: 75, color: 'natural' }, 'IFP-01': { on: true, power: 'on', input: 'wireless' } } },
+  end: { label: 'Selesai', icon: 'power', desc: 'Matikan semua & kunci pintu', confirm: true, apply: { 'AC-01': { on: false }, 'LMP-01': { on: false }, 'AUD-01': { on: false }, 'IFP-01': { on: false, power: 'off' }, 'CAM-01': { on: false }, 'DR-01': { locked: true } } },
+};
+
+/* ================= State ================= */
+const S = {
+  auth: safe.get('smc.auth') === '1',
+  route: 'dashboard',
+  loginErr: '', loggingIn: false,
+  online: true,
+  pending: new Set(), syncing: new Set(),
+  scene: 'meeting', sceneRun: null,
+  devTab: 'ifp', devUnit: { ifp: 'IFP-01', ac: 'AC-01', light: 'LMP-01', audio: 'AUD-01', camera: 'CAM-01', door: 'DR-01' },
+  settings: { room: 'inovasi', timeout: '5', kiosk: true, screenBright: 80, confirmCritical: true, appLock: '15', sound: true, lang: 'id', api: 'https://api.ruangmeeting.local/v1', mqtt: 'mqtt://10.10.1.5:1883' },
+  testing: false,
+  users: [
+    { name: 'Administrator', email: 'admin@ruangmeeting.local', role: 'Admin', rooms: 'Semua ruangan', active: true, self: true },
+    { name: 'Rina Kartika', email: 'rina.k@ruangmeeting.local', role: 'Operator', rooms: 'Inovasi, Kolaborasi', active: true },
+    { name: 'Budi Santoso', email: 'budi.s@ruangmeeting.local', role: 'Operator', rooms: 'Inovasi', active: true },
+    { name: 'Akun Tamu', email: 'tamu.inovasi@ruangmeeting.local', role: 'Tamu', rooms: 'Inovasi', active: false },
+  ],
+  userQuery: '',
+  activity: [
+    { t: '08:55', who: 'Administrator', what: 'Menjalankan scene Mulai Meeting', icon: 'play' },
+    { t: '08:41', who: 'Sistem', what: 'Pintu Utama dikunci otomatis', icon: 'lock' },
+    { t: '08:30', who: 'Rina Kartika', what: 'AC 001 diatur ke 22°C', icon: 'ac' },
+    { t: '08:12', who: 'Sistem', what: 'IFP 002 terputus dari jaringan', icon: 'wifiOff' },
+  ],
+  doorLog: [
+    { t: '08:52', what: 'Dibuka dengan kartu', who: 'Rina Kartika' },
+    { t: '08:41', what: 'Dikunci otomatis', who: 'Sistem' },
+    { t: '08:40', what: 'Dibuka dengan kartu', who: 'Budi Santoso' },
+  ],
+  modal: null,
+  openDd: null,
+};
+
+/* ================= Helpers ================= */
+const initials = n => n.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+function log(what, icon = 'check') {
+  S.activity.unshift({ t: hm(), who: USER.name, what, icon });
+  S.activity.length = Math.min(S.activity.length, 30);
+}
+function toast(msg, kind = 'ok') {
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.innerHTML = `<span class="ti">${ic(kind === 'err' ? 'x' : kind === 'info' ? 'info' : 'check')}</span><span>${esc(msg)}</span>`;
+  const root = $('#toast-root');
+  root.appendChild(el);
+  while (root.children.length > 3) root.firstChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 220); }, kind === 'err' ? 3600 : 2400);
+}
+function canSend(d) {
+  if (!S.online) { toast('Perintah gagal: koneksi ke server terputus', 'err'); return false; }
+  if (d && !d.online) { toast(`${d.name} sedang offline`, 'err'); return false; }
+  return true;
+}
+/* Discrete command: blocks the device UI until the device acknowledges. */
+function exec(id, patch, msg, { delay = 650, silent = false, keepScene = false } = {}) {
+  const d = D[id];
+  if (!canSend(d)) { render(); return false; }
+  S.pending.add(id); render();
+  setTimeout(() => {
+    Object.assign(d, typeof patch === 'function' ? patch(d) : patch);
+    S.pending.delete(id);
+    if (!keepScene) S.scene = null;
+    if (msg) { log(msg, TYPES[d.type].icon); if (!silent) toast(msg); }
+    render();
+  }, delay);
+  return true;
+}
+/* Continuous command (slider/stepper): update UI now, send after debounce. */
+const timers = {};
+function optimistic(id, patch, msgFn) {
+  const d = D[id];
+  if (!canSend(d)) { render(); return; }
+  Object.assign(d, patch);
+  S.syncing.add(id); S.scene = null; render();
+  clearTimeout(timers[id]);
+  timers[id] = setTimeout(() => { S.syncing.delete(id); log(msgFn(), TYPES[d.type].icon); render(); }, 700);
+}
+function openModal(m) { S.modal = { values: {}, ...m }; renderModal(); setTimeout(() => { const f = $('#modal-root input, #modal-root .modal-actions .btn:last-child'); f && f.focus(); }, 30); }
+function closeModal() { S.modal = null; renderModal(); }
+function confirmModal(o) { openModal(o); }
+
+/* ================= Small components ================= */
+const swHtml = (id, on, label, action = 'power', extra = '') =>
+  `<button class="switch ${on ? 'on' : ''} ${id && S.pending.has(id) ? 'busy' : ''}" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-action="${action}" ${id ? `data-id="${id}"` : ''} ${extra}><span>${id && S.pending.has(id) ? '<i class="spinner sm"></i>' : ''}</span></button>`;
+
+function statusLine(id, text) {
+  const d = D[id];
+  let cls = 'ok', t = text;
+  if (!S.online || !d.online) { cls = 'err'; t = 'Offline · ' + text; }
+  else if (S.pending.has(id)) { cls = 'wait'; t = 'Mengirim perintah…'; }
+  else if (S.syncing.has(id)) { cls = 'wait'; t = text + ' · menyimpan…'; }
+  else if (d.type !== 'door' && !d.on) cls = 'off';
+  return `<p><span class="sdot ${cls}"></span>${t}</p>`;
+}
+const chips = (id, f, list, val, title, cls = '') =>
+  `<div class="chips ${cls}">${list.map(o => `<button class="chip ${cls.includes('c2') ? 'inline' : ''} ${o.v === val ? 'active' : ''}" aria-pressed="${o.v === val}" data-action="set" data-id="${id}" data-field="${f}" data-value="${o.v}" data-msg="${esc(`${D[id].name}: ${title} ${o.l}`)}">${ic(o.i)}<span>${o.l}</span></button>`).join('')}</div>`;
+const opts = (id, f, list, val, title) =>
+  `<div class="opts" role="radiogroup" aria-label="${esc(title)}">${list.map(o => `<button class="opt ${o.i ? '' : 'noicon'} ${o.v === val ? 'active' : ''}" role="radio" aria-checked="${o.v === val}" data-action="set" data-id="${id}" data-field="${f}" data-value="${o.v}" data-msg="${esc(`${D[id].name}: ${title} ${o.l}`)}">${o.i ? `<span class="oi">${ic(o.i)}</span>` : ''}${o.l}</button>`).join('')}</div>`;
+function slider({ id, field, val, label, icon = '', min = 0, max = 100, unit = '%', setting = false, head = '' }) {
+  const p = (val - min) / (max - min) * 100;
+  return `<div class="sl"><div class="sl-head"><span>${icon ? ic(icon) : ''}${label}</span>${head}<output>${val}${unit}</output></div>
+    <input type="range" min="${min}" max="${max}" value="${val}" style="--p:${p}%" aria-label="${esc(label)}" data-unit="${unit}" data-label="${esc(label)}" ${setting ? `data-setting="${field}"` : `data-id="${id}" data-field="${field}"`}></div>`;
+}
+const stepBtn = (id, f, step, o, icon) =>
+  `<button class="round-btn" data-action="step" data-id="${id}" data-field="${f}" data-step="${step}" data-min="${o.min}" data-max="${o.max}" data-unit="${o.unit || ''}" data-label="${esc(o.label)}" aria-label="${step > 0 ? 'Tambah' : 'Kurangi'} ${esc(o.label)}">${ic(icon)}</button>`;
+const stepper = (id, f, val, o) =>
+  `<div class="stepper">${stepBtn(id, f, -(o.step || 1), o, 'minus')}<span class="val">${val}${o.unit || ''}</span>${stepBtn(id, f, o.step || 1, o, 'plus')}</div>`;
+const row = (title, sub, ctrl = '', full = '') =>
+  `<div class="row"><div class="row-text"><h4>${title}</h4>${sub ? `<p>${sub}</p>` : ''}</div>${ctrl ? `<div class="row-ctrl">${ctrl}</div>` : ''}${full ? `<div class="row-full">${full}</div>` : ''}</div>`;
+function swatches(id, val) {
+  return `<div class="swatches" role="radiogroup" aria-label="Warna lampu">${COLORS.map(c => `<button class="swatch ${c.v === val ? 'active' : ''}" style="background:${c.c}" role="radio" aria-checked="${c.v === val}" aria-label="${c.l}" title="${c.l}" data-action="set" data-id="${id}" data-field="color" data-value="${c.v}" data-msg="${esc(`${D[id].name}: warna ${c.l}`)}">${ic('check')}</button>`).join('')}</div>`;
+}
+function camPreview(d, big = false) {
+  if (!d.on) return `<div class="cam ${big ? 'big' : ''}">${ic('camOff')}<span>Kamera mati</span></div>`;
+  return `<div class="cam live ${big ? 'big' : ''}"><span class="live-badge"><i></i>LIVE</span><span class="cam-cap">${lab(CMODE, d.cmode)} · ${d.zoom}x</span><div class="frame"></div><div class="people"><span></span><span></span><span></span><span></span></div></div>`;
+}
+function unitBadge(id) {
+  const d = D[id];
+  if (!S.online || !d.online) return `<span class="badge err">${ic('wifiOff')}Offline</span>`;
+  if (S.pending.has(id) || S.syncing.has(id)) return `<span class="badge wait"><i class="spinner sm"></i>Sinkron</span>`;
+  if (d.type !== 'door' && !d.on) return `<span class="badge off">Mati</span>`;
+  return `<span class="badge ok">${ic('check')}Online</span>`;
+}
+
+/* ================= Login ================= */
+function loginView() {
+  const room = ROOMS[S.settings.room];
+  const pw = `
+    <form class="form-stack" id="login-form" novalidate>
+      <div class="field"><label for="lg-user">Email</label><input class="input ${S.loginErr ? 'err' : ''}" id="lg-user" type="email" inputmode="email" autocomplete="email" placeholder="nama@perusahaan.com"></div>
+      <div class="field"><label for="lg-pass">Password</label><div class="input-wrap"><input class="input ${S.loginErr ? 'err' : ''}" id="lg-pass" type="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="eye" data-action="pw-toggle" aria-label="Tampilkan password">${ic('eye')}</button></div></div>
+      <label class="check"><input type="checkbox" checked> Tetap masuk di tablet ini</label>
+      ${S.loginErr ? `<p class="form-err" role="alert">${ic('alert')}${S.loginErr}</p>` : ''}
+      <button class="btn btn-primary btn-block" type="submit" ${S.loggingIn ? 'disabled' : ''}>${S.loggingIn ? '<i class="spinner"></i>Memeriksa…' : 'Masuk'}</button>
+    </form>`;
+  return `<div class="login">
+    <section class="brand">
+      <div class="brand-top"><span class="wordmark light">onesia</span><span class="pill pill-glass">${ic('tablet')}${TABLET_ID}</span></div>
+      <div class="brand-mid"><h1>Smart Meeting<br>Controller</h1><p class="lead">Kendalikan AC, pencahayaan, audio, layar, kamera, dan pintu ruang meeting dalam satu sentuhan.</p></div>
+      <div class="glass">
+        <div><div class="brand-clock" data-clock>${hm()}</div><div class="brand-date" data-date>${dateStr()}</div></div>
+        <div class="glass-sep"></div>
+        <div class="glass-room"><small>${ic('pin')}${room.name} · ${room.floor}</small><b>${MEETING.title}</b><span>${MEETING.time}</span></div>
+      </div>
+    </section>
+    <section class="login-side"><div class="login-form">
+      <div><h2>Masuk</h2><p class="sub">Gunakan email dan password akun Anda.</p></div>
+      ${pw}
+      <p class="hint">${ic('info')}<span>Akun demo: <b>${DEMO.email}</b> / <b>${DEMO.password}</b></span></p>
+    </div></section>
+  </div>`;
+}
+
+/* ================= Shell ================= */
+function shell() {
+  const room = ROOMS[S.settings.room];
+  const page = { dashboard: dashboardView, devices: devicesView, settings: settingsView, user: userView }[S.route] || dashboardView;
+  return `<div class="shell">
+    <nav class="rail" aria-label="Menu utama">
+      ${NAV.map(n => `<button class="nav-item ${S.route === n.r ? 'active' : ''}" data-action="nav" data-route="${n.r}" ${S.route === n.r ? 'aria-current="page"' : ''}>${ic(n.i)}<span>${n.l}</span></button>`).join('')}
+      <span class="rail-spacer"></span>
+      <button class="nav-item" data-action="logout">${ic('logout')}<span>Keluar</span></button>
+    </nav>
+    <div class="content">
+      <header class="topbar">
+        <span class="wordmark">onesia</span>
+        <span class="pill pill-room">${ic('pin')}${room.name}</span>
+        <span class="spacer"></span>
+        <span class="pill pill-live"><i class="dot pulse"></i>Meeting Aktif</span>
+        <span class="pill pill-soft">${ic('clock')}${MEETING.time}</span>
+        <span class="conn ${S.online ? 'ok' : 'err'}" title="${S.online ? 'Terhubung ke server' : 'Koneksi terputus'}">${ic(S.online ? 'wifi' : 'wifiOff')}<span>${S.online ? 'Terhubung' : 'Terputus'}</span></span>
+        <span class="clock" data-clock>${hm()}</span>
+        <button class="avatar" data-action="nav" data-route="user" aria-label="Profil pengguna">${USER.initials}</button>
+      </header>
+      ${S.online ? '' : `<div class="banner" role="alert">${ic('wifiOff')}<span><b>Koneksi ke server terputus.</b> Perintah tidak dapat dikirim, status perangkat mungkin tidak terbaru.</span><button class="btn btn-sm btn-ghost" data-action="reconnect-server">${ic('refresh')}Coba lagi</button></div>`}
+      <main class="main" data-keep-scroll="main-${S.route}">${page()}</main>
+    </div>
+  </div>`;
+}
+
+/* ================= Dashboard ================= */
+function tile(id, status, body, { sw = true, on } = {}) {
+  const d = D[id], pend = S.pending.has(id);
+  const isOn = on ?? d.on;
+  return `<article class="card tile ${isOn ? 'on' : 'off'} ${pend ? 'pending' : ''}" aria-busy="${pend}">
+    <div class="tile-head">
+      <div class="tile-icon">${pend ? '<i class="spinner"></i>' : ic(TYPES[d.type].icon)}</div>
+      <div class="tile-title"><h3>${TYPES[d.type].name}</h3>${statusLine(id, status)}</div>
+      ${sw ? swHtml(id, d.on, `${TYPES[d.type].name} ${d.on ? 'matikan' : 'nyalakan'}`) : ''}
+    </div>
+    <div class="tile-body">${body}</div>
+  </article>`;
+}
+function acTile() {
+  const id = PRIMARY.ac, d = D[id], o = { min: 16, max: 30, unit: '°C', label: 'suhu' };
+  return tile(id, d.on ? `Aktif · ${lab(AC_MODES, d.mode)} · Kipas ${lab(FAN, d.fan).toLowerCase()}` : 'Mati', `
+    <div class="temp">${stepBtn(id, 'temp', -1, o, 'minus')}<div class="temp-val">${d.temp}<sup>°C</sup></div>${stepBtn(id, 'temp', 1, o, 'plus')}</div>
+    ${chips(id, 'mode', AC_MODES.slice(0, 4), d.mode, 'mode')}`);
+}
+function lightTile() {
+  const id = PRIMARY.light, d = D[id];
+  return tile(id, d.on ? `Aktif · ${lab(COLORS, d.color)}` : 'Mati', `
+    ${slider({ id, field: 'brightness', val: d.brightness, label: 'Kecerahan', icon: 'sun' })}
+    <div class="swatch-row"><span>Warna</span>${swatches(id, d.color)}</div>`);
+}
+function audioTile() {
+  const id = PRIMARY.audio, d = D[id];
+  const mute = `<button class="round-btn sm ${d.micMute ? 'on' : ''}" data-action="flip" data-id="${id}" data-field="micMute" data-label="mute mikrofon" aria-pressed="${d.micMute}" aria-label="${d.micMute ? 'Aktifkan' : 'Matikan'} mikrofon">${ic(d.micMute ? 'micOff' : 'mic')}</button>`;
+  return tile(id, d.on ? `Aktif · Vol ${d.volume}%${d.micMute ? ' · Mic mute' : ''}` : 'Mati', `
+    ${slider({ id, field: 'volume', val: d.volume, label: 'Volume', icon: 'volume' })}
+    ${slider({ id, field: 'mic', val: d.mic, label: 'Mikrofon', icon: 'mic', head: mute })}`);
+}
+function ifpTile() {
+  const id = PRIMARY.ifp, d = D[id];
+  const st = d.power === 'on' ? `Aktif · ${lab(INPUTS, d.input)}` : d.power === 'hibernate' ? 'Hibernasi' : 'Mati';
+  return tile(id, st, `<div style="font-size:13px;font-weight:600">Sumber input</div>${chips(id, 'input', INPUTS, d.input, 'input', 'c2')}`);
+}
+function doorTile() {
+  const id = PRIMARY.door, d = D[id];
+  return tile(id, d.locked ? 'Terkunci' : 'Terbuka', `
+    <div class="door-state ${d.locked ? 'locked' : 'open'}"><span class="big">${ic(d.locked ? 'lock' : 'unlock')}</span><div><b>${d.locked ? 'Pintu terkunci' : 'Pintu terbuka'}</b><small>${d.autoLock ? `Kunci otomatis ${d.autoDelay} detik` : 'Kunci otomatis nonaktif'}</small></div></div>
+    <div class="chips c2">
+      <button class="chip inline ${!d.locked ? 'active' : ''}" data-action="door" data-id="${id}" data-value="unlock">${ic('unlock')}<span>Buka</span></button>
+      <button class="chip inline ${d.locked ? 'active' : ''}" data-action="door" data-id="${id}" data-value="lock">${ic('lock')}<span>Kunci</span></button>
+    </div>`, { sw: false, on: true });
+}
+function cameraTile() {
+  const id = PRIMARY.camera, d = D[id];
+  return tile(id, d.on ? `Aktif · ${lab(CMODE, d.cmode)}` : 'Standby', `
+    ${camPreview(d)}
+    <div class="chips c2">
+      <button class="chip inline" data-action="go-device" data-value="camera">${ic('move')}<span>Kontrol PTZ</span></button>
+      <button class="chip inline" data-action="capture" data-id="${id}">${ic('capture')}<span>Tangkap</span></button>
+    </div>`);
+}
+function sceneBtn(k, s) {
+  const run = S.sceneRun && S.sceneRun.key === k;
+  const active = S.scene === k && !run;
+  const sub = run ? `Menerapkan ${S.sceneRun.done}/${S.sceneRun.total}…` : active ? 'Sedang aktif' : s.desc;
+  return `<button class="scene ${active ? 'active' : ''} ${k === 'end' ? 'end' : ''}" data-action="scene" data-value="${k}" ${S.sceneRun ? 'disabled' : ''} aria-pressed="${active}">
+    <span class="scene-ic">${run ? '<i class="spinner"></i>' : ic(s.icon)}</span>
+    <span class="scene-t"><b>${s.label}</b><small>${sub}</small></span></button>`;
+}
+function dashboardView() {
+  const h = new Date().getHours();
+  const greet = h < 11 ? 'pagi' : h < 15 ? 'siang' : h < 18 ? 'sore' : 'malam';
+  const powered = ['ac', 'light', 'audio', 'ifp', 'camera'].filter(t => D[PRIMARY[t]].on).length;
+  return `
+    <div class="page-head"><div><h1>Selamat ${greet}, ${esc(USER.first)}</h1><p>${powered} dari 5 perangkat menyala · ${MEETING.title} sedang berlangsung</p></div></div>
+    <div class="sec-title"><h2>Quick Scene</h2><span class="muted">Satu sentuhan untuk mengatur semua perangkat</span></div>
+    <div class="scenes">${Object.entries(SCENES).map(([k, s]) => sceneBtn(k, s)).join('')}</div>
+    <div class="sec-title"><h2>Perangkat Ruangan</h2><button class="link" data-action="nav" data-route="devices">Kelola perangkat${ic('chevR')}</button></div>
+    <div class="grid">${acTile()}${lightTile()}${audioTile()}${ifpTile()}${doorTile()}${cameraTile()}</div>`;
+}
+
+/* ================= Device management ================= */
+function panelBody(id) {
+  const d = D[id];
+  const sw = swHtml(id, d.on, `${d.name} ${d.on ? 'matikan' : 'nyalakan'}`);
+  const sub = html => `<div class="rows-sub ${d.on ? '' : 'dim'}">${html}</div>`;
+  switch (d.type) {
+    case 'ifp': return row('Status IFP', d.power === 'on' ? 'Menyala' : d.power === 'hibernate' ? 'Hibernasi, layar mati dan bangun cepat' : 'Mati', opts(id, 'power', IFP_POWER, d.power, 'status')) + sub(
+      row('Volume IFP', `${d.volume} / 100`, stepper(id, 'volume', d.volume, { min: 0, max: 100, step: 2, label: 'volume' })) +
+      row('Mode Tampilan', `${lab(IFP_MODES, d.mode)} · kecerahan ${d.brightness}%`, opts(id, 'mode', IFP_MODES, d.mode, 'mode tampilan'),
+        slider({ id, field: 'brightness', val: d.brightness, label: 'Tingkat kecerahan', icon: 'sun' }) +
+        `<div><button class="btn btn-sm btn-ghost" data-action="reset-display" data-id="${id}">${ic('refresh')}Reset ke default</button></div>`) +
+      row('Sumber Input', 'Input aktif saat ini', opts(id, 'input', INPUTS, d.input, 'input')));
+    case 'ac': return row('Status AC', d.on ? 'Menyala' : 'Mati', sw) + sub(
+      row('Suhu', 'Rentang 16–30°C', stepper(id, 'temp', d.temp, { min: 16, max: 30, unit: '°', label: 'suhu' })) +
+      row('Mode', lab(AC_MODES, d.mode), opts(id, 'mode', AC_MODES, d.mode, 'mode')) +
+      row('Kecepatan Kipas', lab(FAN, d.fan), opts(id, 'fan', FAN, d.fan, 'kipas')) +
+      row('Swing', 'Arah angin bergerak otomatis', swHtml(null, d.swing, 'Swing', 'flip', `data-id="${id}" data-field="swing" data-label="swing"`)) +
+      row('Matikan Otomatis', 'Hemat energi setelah meeting selesai', opts(id, 'timer', TIMER, d.timer, 'timer')));
+    case 'light': return row('Status Lampu', d.on ? 'Menyala' : 'Mati', sw) + sub(
+      row('Kecerahan', '', '', slider({ id, field: 'brightness', val: d.brightness, label: 'Tingkat kecerahan', icon: 'sun' })) +
+      row('Warna & Suhu Cahaya', lab(COLORS, d.color), swatches(id, d.color)) +
+      row('Zona', 'Nyalakan per area ruangan', `<div class="opts">${ZONES.map(z => `<button class="opt noicon ${d.zones[z.v] ? 'active' : ''}" aria-pressed="${d.zones[z.v]}" data-action="flip" data-id="${id}" data-field="zone:${z.v}">${z.l}</button>`).join('')}</div>`));
+    case 'audio': {
+      const mute = `<button class="round-btn sm ${d.micMute ? 'on' : ''}" data-action="flip" data-id="${id}" data-field="micMute" data-label="mute mikrofon" aria-pressed="${d.micMute}" aria-label="Mute mikrofon">${ic(d.micMute ? 'micOff' : 'mic')}</button>`;
+      return row('Status Audio', d.on ? 'Menyala' : 'Mati', sw) + sub(
+        row('Level Suara', '', '', slider({ id, field: 'volume', val: d.volume, label: 'Volume master', icon: 'volume' }) + slider({ id, field: 'mic', val: d.mic, label: 'Mikrofon', icon: 'mic', head: mute })) +
+        row('Preset Suara', lab(EQ, d.eq), opts(id, 'eq', EQ, d.eq, 'preset')) +
+        row('Tes Speaker', 'Putar nada tes untuk memastikan speaker berfungsi', `<button class="btn btn-sm btn-ghost" data-action="test-sound" data-id="${id}">${ic('play')}Putar nada tes</button>`));
+    }
+    case 'camera': return row('Status Kamera', d.on ? 'Menyala' : 'Standby', sw) + sub(
+      row('Pratinjau', '', '', camPreview(d, true)) +
+      row('Mode Kamera', d.cmode === 'manual' ? 'Atur posisi dengan kontrol PTZ' : 'Kamera mengikuti peserta secara otomatis', opts(id, 'cmode', CMODE, d.cmode, 'mode')) +
+      row('Kontrol PTZ', 'Menggerakkan kamera akan beralih ke mode Manual', '', `<div class="ptz-wrap">
+        <div class="ptz">
+          <span></span><button class="round-btn" data-action="ptz" data-id="${id}" data-value="atas" aria-label="Atas">${ic('chevU')}</button><span></span>
+          <button class="round-btn" data-action="ptz" data-id="${id}" data-value="kiri" aria-label="Kiri">${ic('chevL')}</button><button class="round-btn home" data-action="ptz" data-id="${id}" data-value="tengah" aria-label="Posisi awal">${ic('home')}</button><button class="round-btn" data-action="ptz" data-id="${id}" data-value="kanan" aria-label="Kanan">${ic('chevR')}</button>
+          <span></span><button class="round-btn" data-action="ptz" data-id="${id}" data-value="bawah" aria-label="Bawah">${ic('chevD')}</button><span></span>
+        </div>
+        <div class="ptz-side"><span>Zoom</span>${stepper(id, 'zoom', d.zoom, { min: 1, max: 5, unit: 'x', label: 'zoom' })}<span>Preset posisi</span>${opts(id, 'preset', PRESETS, d.preset, 'preset')}</div>
+      </div>`));
+    case 'door': return row('Status Kunci', d.locked ? 'Terkunci, hanya bisa dibuka dengan akses' : 'Terbuka', `
+        <button class="btn btn-sm ${d.locked ? 'btn-ghost' : 'btn-primary'}" data-action="door" data-id="${id}" data-value="${d.locked ? 'unlock' : 'lock'}">${ic(d.locked ? 'unlock' : 'lock')}${d.locked ? 'Buka Pintu' : 'Kunci Pintu'}</button>`) +
+      row('Kunci Otomatis', d.autoLock ? `Mengunci ${d.autoDelay} detik setelah pintu tertutup` : 'Nonaktif', swHtml(null, d.autoLock, 'Kunci otomatis', 'flip', `data-id="${id}" data-field="autoLock" data-label="kunci otomatis"`),
+        d.autoLock ? opts(id, 'autoDelay', DELAY, d.autoDelay, 'jeda kunci') : '') +
+      row('Metode Akses', lab(ACCESS, d.access), opts(id, 'access', ACCESS, d.access, 'akses')) +
+      row('Log Akses', 'Aktivitas pintu hari ini', '', `<ul class="log">${S.doorLog.slice(0, 5).map(l => `<li><span class="li-ic">${ic(l.what.includes('ikunci') ? 'lock' : 'unlock')}</span><span class="li-t">${l.what}<small>${esc(l.who)}</small></span><time>${l.t}</time></li>`).join('')}</ul>`);
+  }
+  return '';
+}
+function devicesView() {
+  const type = S.devTab;
+  const units = Object.entries(D).filter(([, d]) => d.type === type);
+  const id = S.devUnit[type], d = D[id];
+  const offline = !d.online;
+  return `
+    <div class="page-head"><div><h1>Manajemen Perangkat</h1><p>Konfigurasi detail setiap perangkat di ${ROOMS[S.settings.room].name}</p></div></div>
+    <div class="tabs" role="tablist" data-keep-scroll="tabs">${Object.entries(TYPES).map(([k, t]) => {
+      const warn = Object.values(D).some(x => x.type === k && !x.online);
+      return `<button class="tab ${k === type ? 'active' : ''}" role="tab" aria-selected="${k === type}" data-action="dev-tab" data-value="${k}">${ic(t.icon)}${t.label}${warn ? '<i class="warn-dot" title="Ada perangkat offline"></i>' : ''}</button>`;
+    }).join('')}</div>
+    <div class="dm">
+      <div class="units" data-keep-scroll="units-${type}">${units.map(([uid, u]) => `
+        <button class="unit ${uid === id ? 'active' : ''}" data-action="dev-unit" data-value="${uid}" aria-pressed="${uid === id}">
+          <span class="unit-ic">${ic(TYPES[u.type].icon)}</span><span class="unit-t"><b>${u.name}</b><small>${u.loc}</small></span>${unitBadge(uid)}
+        </button>`).join('')}</div>
+      <section class="card">
+        <div class="panel-head">
+          <div class="tile-icon">${S.pending.has(id) ? '<i class="spinner"></i>' : ic(TYPES[type].icon)}</div>
+          <div class="ph-t"><h2>${d.name} ${unitBadge(id)}</h2><p>${TYPES[type].name} · ${d.loc}</p></div>
+          <button class="btn btn-sm btn-ghost" data-action="refresh" data-id="${id}">${ic('refresh')}Segarkan status</button>
+        </div>
+        ${offline ? `<div class="alert err" role="alert">${ic('wifiOff')}<div class="a-body"><b>${d.name} tidak terhubung</b>Terakhir terlihat pukul ${d.lastSeen}. Periksa daya dan kabel jaringan perangkat.</div></div>` : ''}
+        <div class="rows ${offline || !S.online ? 'disabled' : ''}">${panelBody(id)}</div>
+      </section>
+    </div>`;
+}
+
+/* ================= Settings ================= */
+const seg = (field, list, val) => `<div class="seg" role="radiogroup">${list.map(o => `<button class="${o.v === val ? 'active' : ''}" role="radio" aria-checked="${o.v === val}" data-action="setting" data-field="${field}" data-value="${o.v}">${o.i ? ic(o.i) : ''}${o.l}</button>`).join('')}</div>`;
+const srow = (title, sub, ctrl, col = false) => `<div class="srow ${col ? 'col' : ''}"><div class="t"><b>${title}</b>${sub ? `<small>${sub}</small>` : ''}</div>${ctrl}</div>`;
+const cardHead = (icon, title, sub) => `<div class="card-head"><span class="ci">${ic(icon)}</span><div class="ch-t"><h3>${title}</h3><p>${sub}</p></div></div>`;
+function settingsView() {
+  const st = S.settings;
+  return `
+    <div class="page-head"><div><h1>Pengaturan</h1><p>Konfigurasi tablet ini dan koneksinya ke sistem IoT</p></div></div>
+    <div class="settings-grid">
+      <div class="stack">
+        <section class="card">${cardHead('home', 'Ruangan', 'Ruang meeting yang dikendalikan tablet ini')}
+          ${srow('Ruang terhubung', 'Perangkat di dashboard mengikuti ruangan ini', dropdown('room', 'Ruang terhubung', Object.entries(ROOMS).map(([k, r]) => ({ v: k, l: r.name, sub: r.floor })), st.room))}
+          ${srow('ID tablet', 'Dipakai untuk registrasi di server', `<span class="pill pill-soft">${ic('tablet')}${TABLET_ID}</span>`)}
+        </section>
+        <section class="card">${cardHead('server', 'Koneksi', 'Server API dan broker MQTT untuk status real-time')}
+          <div class="srow col"><div class="conn-status">${S.online ? `<span class="sdot"></span><b>Terhubung</b><span class="muted">· MQTT aktif, 7 perangkat tersinkron</span><span class="ms">32 ms</span>` : `<span class="sdot err"></span><b>Terputus</b><span class="muted">· mencoba menghubungkan ulang</span>`}</div></div>
+          <div class="srow col"><div class="field"><label for="st-api">Alamat server API</label><input class="input" id="st-api" data-setting="api" value="${esc(st.api)}"></div>
+            <div class="field"><label for="st-mqtt">Broker MQTT</label><input class="input" id="st-mqtt" data-setting="mqtt" value="${esc(st.mqtt)}"></div>
+            <div><button class="btn btn-sm btn-ghost" data-action="test-conn" ${S.testing ? 'disabled' : ''}>${S.testing ? '<i class="spinner sm"></i>Menguji…' : ic('wifi') + 'Uji koneksi'}</button></div></div>
+          ${srow('Simulasi koneksi terputus', 'Khusus prototype, untuk melihat tampilan saat offline', swHtml(null, !S.online, 'Simulasi offline', 'sim-offline'))}
+        </section>
+      </div>
+      <div class="stack">
+        <section class="card">${cardHead('tablet', 'Tampilan', 'Perilaku layar tablet di ruang meeting')}
+          ${srow('Kecerahan layar', '', slider({ field: 'screenBright', val: st.screenBright, label: 'Kecerahan', icon: 'sun', setting: true }), true)}
+          ${srow('Redupkan layar setelah', 'Layar kembali menyala saat disentuh', seg('timeout', [{ v: '1', l: '1 mnt' }, { v: '5', l: '5 mnt' }, { v: '10', l: '10 mnt' }, { v: 'never', l: 'Tidak' }], st.timeout))}
+          ${srow('Mode kiosk', 'Kunci tablet hanya untuk aplikasi ini', swHtml(null, st.kiosk, 'Mode kiosk', 'setting-flip', 'data-field="kiosk"'))}
+          ${srow('Bahasa', '', seg('lang', [{ v: 'id', l: 'Indonesia' }, { v: 'en', l: 'English' }], st.lang))}
+        </section>
+        <section class="card">${cardHead('shield', 'Keamanan & Feedback', 'Perlindungan aksi penting')}
+          ${srow('Konfirmasi aksi kritis', 'Tampilkan dialog sebelum membuka pintu atau mematikan semua perangkat', swHtml(null, st.confirmCritical, 'Konfirmasi aksi kritis', 'setting-flip', 'data-field="confirmCritical"'))}
+          ${srow('Keluar otomatis', 'Kembali ke halaman login jika tidak digunakan', seg('appLock', [{ v: '5', l: '5 mnt' }, { v: '15', l: '15 mnt' }, { v: '30', l: '30 mnt' }], st.appLock))}
+          ${srow('Suara sentuhan', 'Bunyi singkat saat perintah berhasil', swHtml(null, st.sound, 'Suara sentuhan', 'setting-flip', 'data-field="sound"'))}
+        </section>
+        <section class="card">${cardHead('info', 'Tentang', 'Smart Meeting Controller')}
+          ${srow('Versi aplikasi', '0.1.0 (build 1) · prototype', `<button class="btn btn-sm btn-ghost" data-action="check-update">${ic('download')}Periksa pembaruan</button>`)}
+        </section>
+      </div>
+    </div>`;
+}
+
+/* ================= User ================= */
+function userRows() {
+  const q = S.userQuery.trim().toLowerCase();
+  const list = S.users.map((u, i) => ({ ...u, i })).filter(u => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  if (!list.length) return `<tr><td colspan="5"><div class="empty">Tidak ada user yang cocok dengan “${esc(S.userQuery)}”.</div></td></tr>`;
+  return list.map(u => `<tr class="${u.active ? '' : 'muted-row'}">
+    <td><div class="who"><span class="mini-av">${initials(u.name)}</span><div><b>${esc(u.name)}${u.self ? ' <span class="muted" style="font-weight:500">(Anda)</span>' : ''}</b><small>${esc(u.email)}</small></div></div></td>
+    <td><span class="role ${u.role}">${u.role}</span></td>
+    <td>${esc(u.rooms)}</td>
+    <td>${swHtml(null, u.active, `Status ${u.name}`, 'user-flip', `data-value="${u.i}"`)}</td>
+    <td style="text-align:right"><button class="round-btn sm" data-action="edit-user" data-value="${u.i}" aria-label="Ubah ${esc(u.name)}">${ic('edit')}</button></td>
+  </tr>`).join('');
+}
+function userView() {
+  return `
+    <div class="page-head"><div><h1>User</h1><p>Profil Anda dan pengelolaan akses pengguna</p></div></div>
+    <div class="user-layout">
+      <div class="stack">
+        <section class="card profile">
+          <div class="profile-cover"></div>
+          <div class="profile-avatar">${USER.initials}</div>
+          <h3>${USER.name}</h3><p class="uname">${USER.email}</p><span class="role Admin">${USER.role}</span>
+          <div style="margin-top:14px">
+            <div class="kv"><span>Ruangan</span><b>${ROOMS[S.settings.room].name}</b></div>
+            <div class="kv"><span>Masuk sejak</span><b>Hari ini, 08:50</b></div>
+            <div class="kv"><span>Metode masuk</span><b>Email & password</b></div>
+          </div>
+          <div class="profile-actions">
+            <button class="btn btn-sm btn-ghost full" data-action="change-pass">${ic('key')}Ubah Password</button>
+            <button class="btn btn-sm btn-outline-red full" data-action="logout">${ic('logout')}Keluar</button>
+          </div>
+        </section>
+        <section class="card">${cardHead('clock', 'Aktivitas Terakhir', 'Perintah yang dikirim dari tablet ini')}
+          <ul class="log">${S.activity.slice(0, 6).map(a => `<li><span class="li-ic">${ic(a.icon || 'check')}</span><span class="li-t">${esc(a.what)}<small>${esc(a.who)}</small></span><time>${a.t}</time></li>`).join('')}</ul>
+        </section>
+      </div>
+      <section class="card">
+        <div class="card-head between"><div style="display:flex;gap:12px;align-items:center"><span class="ci">${ic('users')}</span><div><h3>Kelola User</h3><p>${S.users.length} pengguna terdaftar · ${S.users.filter(u => u.active).length} aktif</p></div></div>
+          <button class="btn btn-sm btn-primary" data-action="add-user">${ic('userPlus')}Tambah User</button></div>
+        <div class="search">${ic('search')}<input class="input" id="user-search" placeholder="Cari nama atau email" value="${esc(S.userQuery)}" aria-label="Cari user"></div>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Nama</th><th>Peran</th><th>Akses ruangan</th><th>Aktif</th><th></th></tr></thead>
+          <tbody id="user-tbody">${userRows()}</tbody>
+        </table></div>
+      </section>
+    </div>`;
+}
+
+/* ================= Modal ================= */
+/* Themed dropdown; open state lives in S.openDd. */
+function dropdown(key, label, options, value) {
+  const open = S.openDd === key;
+  const cur = options.find(o => o.v === value) || options[0];
+  return `<div class="dd ${open ? 'open' : ''}">
+    <button type="button" class="input dd-btn" data-action="dd-toggle" data-value="${key}" aria-haspopup="listbox" aria-expanded="${open}" aria-label="${esc(label)}">
+      <span class="dd-val">${esc(cur.l)}${cur.sub ? `<small>· ${esc(cur.sub)}</small>` : ''}</span>${ic('chevD')}
+    </button>
+    ${open ? `<div class="dd-menu" role="listbox" aria-label="${esc(label)}">${options.map(o => `
+      <button type="button" class="dd-opt ${o.v === value ? 'sel' : ''}" role="option" aria-selected="${o.v === value}" data-action="dd-pick" data-field="${key}" data-value="${o.v}">
+        <span class="t"><b>${esc(o.l)}</b>${o.sub ? `<small>${esc(o.sub)}</small>` : ''}</span>${o.v === value ? ic('check') : ''}
+      </button>`).join('')}</div>` : ''}
+  </div>`;
+}
+function fieldHtml(f, v) {
+  const val = v ?? f.value ?? '';
+  // Few fixed options: segmented buttons are faster to tap than a dropdown.
+  if (f.type === 'seg') return `<div class="field"><label>${f.label}</label><div class="seg full" role="radiogroup" aria-label="${esc(f.label)}">${f.options.map(o => `<button type="button" class="${o === val ? 'active' : ''}" role="radio" aria-checked="${o === val}" data-action="seg-pick" data-value="${o}">${o}</button>`).join('')}</div><input type="hidden" name="${f.k}" value="${esc(val)}"></div>`;
+  return `<div class="field"><label for="mf-${f.k}">${f.label}</label><input class="input" id="mf-${f.k}" name="${f.k}" type="${f.type || 'text'}" ${f.type === 'password' ? 'inputmode="numeric"' : ''} placeholder="${esc(f.placeholder || '')}" value="${esc(val)}"></div>`;
+}
+function renderModal() {
+  const m = S.modal, root = $('#modal-root');
+  if (!m) { root.innerHTML = ''; return; }
+  root.innerHTML = `<div class="modal-backdrop" data-action="modal-close"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-ic">${ic(m.icon || 'info')}</div>
+    <h3 id="modal-title">${m.title}</h3>${m.text ? `<p>${m.text}</p>` : ''}
+    ${m.fields ? `<form id="modal-form" class="form-stack" novalidate>${m.fields.map(f => fieldHtml(f, m.values[f.k])).join('')}${m.err ? `<p class="form-err" role="alert">${ic('alert')}${m.err}</p>` : ''}<button type="submit" hidden></button></form>` : ''}
+    <div class="modal-actions"><button class="btn btn-ghost" data-action="modal-close">Batal</button><button class="btn ${m.danger ? 'btn-danger' : 'btn-primary'}" data-action="modal-ok">${m.ok || 'Simpan'}</button></div>
+  </div></div>`;
+}
+function modalOk() {
+  const m = S.modal; if (!m) return;
+  if (m.fields) {
+    const form = $('#modal-form');
+    m.fields.forEach(f => { m.values[f.k] = form.elements[f.k].value.trim(); });
+    const err = m.onSubmit(m.values);
+    if (err) { m.err = err; renderModal(); return; }
+    closeModal();
+  } else { closeModal(); m.onConfirm && m.onConfirm(); }
+}
+
+/* ================= Render ================= */
+function render() {
+  const view = $('#view');
+  const scrolls = {};
+  view.querySelectorAll('[data-keep-scroll]').forEach(el => { scrolls[el.dataset.keepScroll] = [el.scrollLeft, el.scrollTop]; });
+  view.innerHTML = S.auth ? shell() : loginView();
+  view.querySelectorAll('[data-keep-scroll]').forEach(el => { const s = scrolls[el.dataset.keepScroll]; if (s) { el.scrollLeft = s[0]; el.scrollTop = s[1]; } });
+}
+function go(route) {
+  if (!S.auth) route = 'login';
+  if (route !== 'login') S.route = route;
+  if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+  render();
+}
+
+/* ================= Flows ================= */
+function login() {
+  {
+    S.loggingIn = false; S.auth = true; safe.set('smc.auth', '1');
+    go('dashboard'); toast(`Selamat datang, ${USER.name}`);
+  }
+}
+function runScene(key) {
+  const s = SCENES[key];
+  if (!canSend()) return;
+  const start = () => {
+    const ids = Object.keys(s.apply).filter(id => D[id].online);
+    S.sceneRun = { key, done: 0, total: ids.length }; render();
+    ids.forEach((id, i) => setTimeout(() => {
+      S.pending.add(id); render();
+      setTimeout(() => {
+        Object.assign(D[id], s.apply[id]); S.pending.delete(id); S.sceneRun.done++;
+        if (S.sceneRun.done === S.sceneRun.total) {
+          S.sceneRun = null; S.scene = key === 'end' ? null : key;
+          log(`Menjalankan scene ${s.label}`, s.icon); toast(`Scene “${s.label}” diterapkan ke ${ids.length} perangkat`);
+        }
+        render();
+      }, 350);
+    }, i * 220));
+  };
+  if (s.confirm && S.settings.confirmCritical) confirmModal({ icon: 'power', title: 'Akhiri meeting?', text: 'Semua perangkat akan dimatikan dan pintu dikunci. Pastikan tidak ada peserta yang masih menggunakan ruangan.', ok: 'Matikan semua', danger: true, onConfirm: start });
+  else start();
+}
+function doorAction(id, lock) {
+  const d = D[id];
+  if (d.locked === lock) return;
+  const doIt = () => exec(id, () => { S.doorLog.unshift({ t: hm(), what: lock ? 'Dikunci dari tablet' : 'Dibuka dari tablet', who: USER.name }); return { locked: lock }; }, `${d.name} ${lock ? 'dikunci' : 'dibuka'}`, { keepScene: true });
+  if (S.settings.confirmCritical) confirmModal({
+    icon: lock ? 'lock' : 'unlock', title: lock ? 'Kunci pintu?' : 'Buka kunci pintu?',
+    text: lock ? 'Peserta dari luar tidak dapat masuk tanpa kartu akses.' : 'Pintu akan terbuka dan ruangan dapat diakses siapa saja.' + (d.autoLock ? ` Pintu terkunci lagi otomatis ${d.autoDelay} detik setelah tertutup.` : ''),
+    ok: lock ? 'Kunci Pintu' : 'Buka Pintu', danger: !lock, onConfirm: doIt,
+  });
+  else doIt();
+}
+function userForm(idx) {
+  const u = idx != null ? S.users[idx] : null;
+  openModal({
+    icon: u ? 'edit' : 'userPlus', title: u ? 'Ubah User' : 'Tambah User', ok: u ? 'Simpan' : 'Tambah',
+    fields: [
+      { k: 'name', label: 'Nama lengkap', placeholder: 'mis. Dewi Lestari', value: u?.name },
+      { k: 'email', label: 'Email', type: 'email', placeholder: 'nama@perusahaan.com', value: u?.email },
+      { k: 'role', label: 'Peran', type: 'seg', options: ['Admin', 'Operator', 'Tamu'], value: u?.role || 'Operator' },
+    ],
+    onSubmit: v => {
+      if (!v.name || !v.email) return 'Nama dan email wajib diisi.';
+      if (!EMAIL_RE.test(v.email)) return 'Format email tidak valid.';
+      if (S.users.some((x, i) => i !== idx && x.email.toLowerCase() === v.email.toLowerCase())) return 'Email sudah dipakai.';
+      if (u) Object.assign(u, { name: v.name, email: v.email, role: v.role });
+      else S.users.push({ name: v.name, email: v.email, role: v.role, rooms: ROOMS[S.settings.room].name.replace('Ruang ', ''), active: true });
+      toast(u ? 'Data user diperbarui' : `User ${v.name} ditambahkan`); render();
+    },
+  });
+}
+
+/* ================= Actions ================= */
+const A = {
+  nav: el => go(el.dataset.route),
+  logout: () => confirmModal({ icon: 'logout', title: 'Keluar dari aplikasi?', text: 'Perangkat di ruangan tetap berjalan. Anda perlu masuk lagi untuk mengendalikannya.', ok: 'Keluar', danger: true, onConfirm: () => { S.auth = false; S.loginErr = ''; safe.set('smc.auth', '0'); go('login'); } }),
+  'pw-toggle': el => { const inp = $('#lg-pass'); const show = inp.type === 'password'; inp.type = show ? 'text' : 'password'; el.innerHTML = ic(show ? 'eyeOff' : 'eye'); el.setAttribute('aria-label', show ? 'Sembunyikan password' : 'Tampilkan password'); },
+  power: (el, id) => { const d = D[id]; const on = !d.on; exec(id, d.type === 'ifp' ? { on, power: on ? 'on' : 'off' } : { on }, `${d.name} ${on ? 'dinyalakan' : 'dimatikan'}`); },
+  set: (el, id, f, v) => { const d = D[id]; if (d[f] === v) return; const p = { [f]: v }; if (f === 'power') p.on = v === 'on'; exec(id, p, el.dataset.msg); },
+  step: (el, id, f) => {
+    const d = D[id], st = +el.dataset.step, unit = el.dataset.unit;
+    const nv = Math.min(+el.dataset.max, Math.max(+el.dataset.min, d[f] + st));
+    if (nv === d[f]) { toast(`Sudah di batas ${st > 0 ? 'maksimum' : 'minimum'} (${nv}${unit})`, 'info'); return; }
+    optimistic(id, { [f]: nv }, () => `${d.name}: ${el.dataset.label} ${d[f]}${unit}`);
+  },
+  flip: (el, id, f) => {
+    const d = D[id];
+    if (f.startsWith('zone:')) { const z = f.slice(5); const zones = { ...d.zones, [z]: !d.zones[z] }; exec(id, { zones }, `${d.name}: zona ${z} ${zones[z] ? 'dinyalakan' : 'dimatikan'}`); return; }
+    exec(id, { [f]: !d[f] }, `${d.name}: ${el.dataset.label} ${!d[f] ? 'aktif' : 'nonaktif'}`);
+  },
+  door: (el, id, f, v) => doorAction(id, v === 'lock'),
+  scene: (el, id, f, v) => runScene(v),
+  capture: (el, id) => { if (canSend(D[id])) { log('Tangkapan kamera disimpan', 'capture'); toast('Tangkapan layar kamera disimpan'); } },
+  ptz: (el, id, f, v) => { const d = D[id]; const p = { cmode: 'manual' }; if (v === 'tengah') p.preset = 'ruangan'; if (d.cmode !== 'manual') toast('Mode kamera beralih ke Manual', 'info'); optimistic(id, p, () => `${d.name}: kamera digerakkan ke ${v}`); },
+  'go-device': (el, id, f, v) => { S.devTab = v; go('devices'); },
+  'dev-tab': (el, id, f, v) => { S.devTab = v; render(); },
+  'dev-unit': (el, id, f, v) => { S.devUnit[S.devTab] = v; render(); },
+  'reset-display': (el, id) => exec(id, { mode: 'standar', brightness: 70 }, `${D[id].name}: tampilan direset ke default`),
+  'test-sound': (el, id) => exec(id, {}, `Nada tes diputar di ${D[id].name}`, { delay: 900 }),
+  refresh: (el, id) => {
+    const d = D[id];
+    if (!S.online) return void toast('Tidak dapat memeriksa status: koneksi terputus', 'err');
+    S.pending.add(id); render();
+    setTimeout(() => { S.pending.delete(id); render(); d.online ? toast(`Status ${d.name} diperbarui`) : toast(`${d.name} belum merespons. Periksa daya dan kabel jaringan.`, 'err'); }, 1100);
+  },
+  'reconnect-server': el => { el.disabled = true; el.innerHTML = '<i class="spinner sm"></i>Menghubungkan…'; setTimeout(() => { S.online = true; render(); toast('Terhubung kembali ke server'); }, 1000); },
+  'sim-offline': () => { S.online = !S.online; render(); toast(S.online ? 'Koneksi dipulihkan' : 'Simulasi: koneksi terputus', S.online ? 'ok' : 'err'); },
+  setting: (el, id, f, v) => { if (S.settings[f] === v) return; S.settings[f] = v; render(); toast(f === 'lang' && v === 'en' ? 'Bahasa diubah ke English (teks prototype belum diterjemahkan)' : 'Pengaturan disimpan'); },
+  'setting-flip': (el, id, f) => { S.settings[f] = !S.settings[f]; render(); toast('Pengaturan disimpan'); },
+  'test-conn': () => { S.testing = true; render(); setTimeout(() => { S.testing = false; render(); S.online ? toast('Server & broker MQTT merespons (32 ms)') : toast('Server tidak merespons. Periksa jaringan tablet.', 'err'); }, 1000); },
+  'check-update': () => toast('Aplikasi sudah versi terbaru', 'info'),
+  'add-user': () => userForm(null),
+  'edit-user': (el, id, f, v) => userForm(+v),
+  'user-flip': (el, id, f, v) => {
+    const u = S.users[+v];
+    if (u.self) return void toast('Tidak dapat menonaktifkan akun sendiri', 'err');
+    u.active = !u.active; $('#user-tbody').innerHTML = userRows(); toast(`${u.name} ${u.active ? 'diaktifkan' : 'dinonaktifkan'}`);
+  },
+  'change-pass': () => openModal({
+    icon: 'key', title: 'Ubah Password',
+    fields: [{ k: 'old', label: 'Password saat ini', type: 'password' }, { k: 'n1', label: 'Password baru', type: 'password', placeholder: 'Minimal 8 karakter' }, { k: 'n2', label: 'Ulangi password baru', type: 'password' }],
+    onSubmit: v => { if (v.old !== DEMO.password) return 'Password saat ini salah.'; if (v.n1.length < 8) return 'Password baru minimal 8 karakter.'; if (v.n1 !== v.n2) return 'Konfirmasi password tidak sama.'; toast('Password berhasil diubah'); },
+  }),
+  'modal-close': (el, id, f, v, e) => { if (el.classList.contains('modal-backdrop') && e.target !== el) return; closeModal(); },
+  'modal-ok': () => modalOk(),
+  'dd-toggle': (el, id, f, v) => { S.openDd = S.openDd === v ? null : v; render(); },
+  'dd-pick': (el, id, f, v) => {
+    S.openDd = null;
+    if (f === 'room' && v !== S.settings.room) {
+      S.settings.room = v; render(); toast(`Tablet sekarang mengendalikan ${ROOMS[v].name}`);
+    } else render();
+  },
+  'seg-pick': (el, id, f, v) => {
+    const group = el.parentElement;
+    group.querySelectorAll('button').forEach(b => { const on = b === el; b.classList.toggle('active', on); b.setAttribute('aria-checked', on); });
+    group.nextElementSibling.value = v;
+  },
+};
+
+/* ================= Events ================= */
+document.addEventListener('click', e => {
+  // Tap outside an open dropdown closes it.
+  if (S.openDd && !e.target.closest('.dd')) { S.openDd = null; render(); }
+  const el = e.target.closest('[data-action]');
+  if (!el || el.disabled) return;
+  const fn = A[el.dataset.action];
+  if (fn) fn(el, el.dataset.id, el.dataset.field, el.dataset.value, e);
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (t.type === 'range') {
+    const p = (t.value - t.min) / (t.max - t.min) * 100;
+    t.style.setProperty('--p', p + '%');
+    t.closest('.sl').querySelector('output').textContent = t.value + t.dataset.unit;
+  } else if (t.id === 'user-search') {
+    S.userQuery = t.value; $('#user-tbody').innerHTML = userRows();
+  }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.setting) {
+    const f = t.dataset.setting;
+    S.settings[f] = t.type === 'range' ? +t.value : t.value;
+    if (f === 'room') { render(); toast(`Tablet sekarang mengendalikan ${ROOMS[t.value].name}`); }
+    else if (t.type !== 'range') toast('Alamat koneksi disimpan');
+    return;
+  }
+  if (t.type === 'range' && t.dataset.id) {
+    const d = D[t.dataset.id], f = t.dataset.field, unit = t.dataset.unit;
+    optimistic(t.dataset.id, { [f]: +t.value }, () => `${d.name}: ${t.dataset.label.toLowerCase()} ${d[f]}${unit}`);
+  }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'login-form') {
+    const u = $('#lg-user').value.trim(), p = $('#lg-pass').value;
+    const fail = msg => { S.loginErr = msg; render(); $('#lg-user').value = u; };
+    if (!u || !p) return fail('Email dan password wajib diisi.');
+    if (!EMAIL_RE.test(u)) return fail('Format email tidak valid.');
+    S.loggingIn = true; S.loginErr = ''; render(); $('#lg-user').value = u;
+    setTimeout(() => {
+      S.loggingIn = false;
+      if (u.toLowerCase() !== DEMO.email || p !== DEMO.password) return fail('Email atau password salah.');
+      login();
+    }, 800);
+  } else if (e.target.id === 'modal-form') modalOk();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && S.openDd) { S.openDd = null; render(); }
+  else if (e.key === 'Escape' && S.modal) closeModal();
+});
+window.addEventListener('hashchange', () => { const r = location.hash.replace('#/', ''); if (r && r !== S.route) go(r); });
+setInterval(() => {
+  document.querySelectorAll('[data-clock]').forEach(el => { el.textContent = hm(); });
+  document.querySelectorAll('[data-date]').forEach(el => { el.textContent = dateStr(); });
+}, 10000);
+
+/* ================= Preview frame ================= */
+/* The app is locked to landscape: always render the 1280x800 frame, scaled to fit. */
+function applyPreview() {
+  const stage = $('#stage'), app = $('#app');
+  stage.className = 'stage framed';
+  const [w, h] = [1280, 800];
+  const scale = Math.min((stage.clientWidth - 64) / w, (stage.clientHeight - 64) / h, 1);
+  app.style.cssText = `position:absolute;left:50%;top:50%;width:${w}px;height:${h}px;transform:translate(-50%,-50%) scale(${scale})`;
+  $('#pv-size').textContent = `${w}×${h} · ${Math.round(scale * 100)}%`;
+}
+window.addEventListener('resize', applyPreview);
+
+/* ================= Boot ================= */
+const initial = location.hash.replace('#/', '');
+S.route = NAV.some(n => n.r === initial) ? initial : 'dashboard';
+go(S.auth ? S.route : 'login');
+applyPreview();
+</script>
+</body>
+</html>

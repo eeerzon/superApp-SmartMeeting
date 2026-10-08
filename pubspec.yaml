@@ -1,0 +1,44 @@
+name: smart_meeting_controller
+description: Tablet controller for IoT-based meeting room devices (AC, lighting, audio, IFP, camera, door).
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # State management & routing
+  flutter_riverpod: ^2.5.1
+  go_router: ^14.2.0
+
+  # Networking & realtime
+  dio: ^5.4.3
+  mqtt_client: ^10.2.1
+  web_socket_channel: ^3.0.0
+
+  # Storage
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.2.3
+
+  # UI & utils
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  mocktail: ^1.0.3
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/images/
+    - assets/icons/devices/
