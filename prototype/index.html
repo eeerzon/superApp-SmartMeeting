@@ -392,6 +392,23 @@ select.input{appearance:none;-webkit-appearance:none;padding-right:40px;cursor:p
 
 /* ---------- Fixed landscape (matches lib/core/layout/app_layout.dart) ---------- */
 .rail{width:220px;padding:20px 14px}
+
+/* Collapsible sidebar: floating chevron tab at the vertical middle of the
+   sidebar edge. Collapsed = thin white strip so the tab is not floating alone. */
+.side{position:relative;flex:none;width:220px;z-index:5;transition:width .25s ease}
+.side.collapsed{width:12px}
+.side-clip{height:100%;overflow:hidden;background:var(--surface);border-right:1px solid var(--border)}
+.side .rail{height:100%;border-right:0;transition:opacity .2s ease}
+.side.collapsed .rail{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .15s ease,visibility 0s .15s}
+.side-toggle{position:absolute;top:50%;left:100%;transform:translate(-1px,-50%);width:24px;height:56px;display:grid;place-items:center;
+  background:var(--surface);color:var(--red-600);border:1px solid var(--border);border-left:0;border-radius:0 12px 12px 0;
+  box-shadow:4px 0 12px -4px rgba(16,24,40,.18);transition:background .15s,color .15s}
+.side-toggle::before{content:"";position:absolute;inset:-6px -14px -6px -8px} /* ≥44px touch target */
+.side-toggle:hover{background:var(--red-50)}
+.side-toggle:active{background:var(--red-100)}
+.side-toggle:focus-visible{outline:2px solid var(--red-600);outline-offset:2px}
+.side-toggle .i{width:18px;height:18px;stroke-width:2.5;transition:transform .25s ease}
+.side.collapsed .side-toggle .i{transform:rotate(180deg)}
 .nav-item{flex-direction:row;justify-content:flex-start;gap:12px;padding:0 16px;min-height:52px;font-size:14px}
 .nav-item.active::before{left:-14px}
 </style>
@@ -572,6 +589,7 @@ const S = {
   ],
   modal: null,
   openDd: null,
+  navCollapsed: safe.get('smc.navCollapsed', localStorage) === '1',
 };
 
 /* ================= Helpers ================= */
@@ -699,11 +717,16 @@ function shell() {
   const room = ROOMS[S.settings.room];
   const page = { dashboard: dashboardView, devices: devicesView, settings: settingsView, user: userView }[S.route] || dashboardView;
   return `<div class="shell">
-    <nav class="rail" aria-label="Menu utama">
+    <div class="side ${S.navCollapsed ? 'collapsed' : ''}">
+    <div class="side-clip">
+    <nav class="rail" id="main-nav" aria-label="Menu utama">
       ${NAV.map(n => `<button class="nav-item ${S.route === n.r ? 'active' : ''}" data-action="nav" data-route="${n.r}" ${S.route === n.r ? 'aria-current="page"' : ''}>${ic(n.i)}<span>${n.l}</span></button>`).join('')}
       <span class="rail-spacer"></span>
       <button class="nav-item" data-action="logout">${ic('logout')}<span>Keluar</span></button>
     </nav>
+    </div>
+    <button class="side-toggle" data-action="nav-toggle" aria-controls="main-nav" aria-expanded="${!S.navCollapsed}" aria-label="${S.navCollapsed ? 'Tampilkan menu' : 'Sembunyikan menu'}" title="${S.navCollapsed ? 'Tampilkan menu' : 'Sembunyikan menu'}">${ic('chevL')}</button>
+    </div>
     <div class="content">
       <header class="topbar">
         <span class="wordmark">onesia</span>
@@ -1131,6 +1154,16 @@ const A = {
   }),
   'modal-close': (el, id, f, v, e) => { if (el.classList.contains('modal-backdrop') && e.target !== el) return; closeModal(); },
   'modal-ok': () => modalOk(),
+  // Toggle via classes (no re-render) so the width transition animates.
+  'nav-toggle': el => {
+    S.navCollapsed = !S.navCollapsed;
+    safe.set('smc.navCollapsed', S.navCollapsed ? '1' : '0', localStorage);
+    el.closest('.side').classList.toggle('collapsed', S.navCollapsed);
+    const label = S.navCollapsed ? 'Tampilkan menu' : 'Sembunyikan menu';
+    el.setAttribute('aria-expanded', String(!S.navCollapsed));
+    el.setAttribute('aria-label', label);
+    el.title = label;
+  },
   'dd-toggle': (el, id, f, v) => { S.openDd = S.openDd === v ? null : v; render(); },
   'dd-pick': (el, id, f, v) => {
     S.openDd = null;
