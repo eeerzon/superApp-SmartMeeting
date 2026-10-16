@@ -21,3 +21,6 @@ build/
 **/android/key.properties
 **/ios/Pods/
 **/ios/.symlinks/
+
+# macOS
+.DS_Store

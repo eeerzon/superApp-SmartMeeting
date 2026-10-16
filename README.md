@@ -1,79 +1,103 @@
-# Smart Meeting Controller
+# superApp Smart Meeting
 
-Aplikasi Flutter untuk tablet guna mengontrol perangkat IoT di ruang meeting: AC, pencahayaan, audio, IFP, kamera, dan akses pintu.
+Aplikasi Flutter untuk tablet (landscape) yang mengendalikan perangkat di satu ruang meeting — IFP, pintu, dan perangkat lain yang terdaftar di **Smart Meeting**. Aplikasi hanya berbicara dengan API Smart Meeting; Smart Meeting yang meneruskan perintah ke mini PC ruangan.
 
-- **Layar:** tablet, **dikunci landscape** (`main.dart`). Desain acuan 1280×800 dp. Lebar konten menyesuaikan, dan halaman di-scroll secara vertikal.
-- **Arsitektur:** feature-first dan clean architecture (`data` / `domain` / `presentation`)
-- **Stack:** Riverpod (state), go_router (navigasi + redirect login), Dio dan MQTT/WebSocket (disiapkan untuk integrasi)
-- **Tema:** latar putih bersih dengan aksen gradasi merah Onesia
-- **Data:** saat ini memakai repository mock dengan latency tiruan. Bagian yang perlu disambungkan ke backend ditandai `TODO`.
-
-## Setup
-
-```bash
-# 1. Generate folder platform. File di lib/ tidak akan ditimpa.
-flutter create --org id.onesia --platforms android,ios,web .
-#    Hapus test/widget_test.dart hasil generate (masih merujuk MyApp).
-
-# 2. Install dependency
-flutter pub get
-
-# 3. Preview di Chrome
-flutter run -d chrome
-
-# 4. Tablet
-flutter run --dart-define=API_BASE_URL=https://<server>/v1 --dart-define=MQTT_HOST=mqtt://<broker>:1883 --dart-define=ROOM_ID=inovasi
+```
+Aplikasi (Flutter) ⇄ Smart Meeting API ⇄ Mini PC → Perangkat
 ```
 
-**Akun demo:** `admin@ruangmeeting.local` / `admin123`. Akun ini ada di `features/auth/data/repositories/auth_repository_impl.dart`.
+## Fitur
+
+- **Pairing ruangan** dengan kode setup `XXXX-XXXX` (sama dengan kode layar display). Kode ditukar dengan token, token disimpan di Keychain / Keystore.
+- **Dashboard**: info ruangan, status & jadwal meeting di top bar, card per perangkat dari API (card IFP dengan saklar daya dan sumber input), semua card sama tinggi.
+- **Halaman Perangkat**: tab per kategori, detail tiap perangkat (daya, suara, sumber input, mode gambar, kontras, kecerahan, informasi).
+- **Status perangkat** langsung dari mini PC, dengan polling berkala di dashboard.
+- **Keluar** dari ruangan (hapus token) dan **otomatis keluar** bila token dicabut admin (HTTP 401).
+
+## Menjalankan
+
+```bash
+flutter pub get
+flutter run
+```
+
+Base URL API diatur di `lib/helper/global_var.dart`:
+
+```dart
+const String baseUrl = 'https://smartmeeting.onesia.id';
+```
+
+Butuh kode setup ruangan dari admin Smart Meeting (menu Ruangan → "Hubungkan Display").
+
+### Icon aplikasi
+
+Diatur lewat `flutter_launcher_icons` di `pubspec.yaml` (`assets/images/onesia_icon.png`):
+
+```bash
+dart run flutter_launcher_icons
+```
+
+## Endpoint API yang dipakai
+
+Base: `{APP_URL}/api/v1`. Semua endpoint selain pairing memakai `Authorization: Bearer <token>`.
+
+| Kegunaan | Method | Endpoint | Dipakai di |
+|---|---|---|---|
+| Tukar kode setup → token | `POST` | `/monitor/pair` | `login_room.dart` |
+| Data ruangan + daftar perangkat & perintah | `GET` | `/remote/room` | Dashboard, Perangkat |
+| Status perangkat (langsung dari mini PC) | `GET` | `/remote/devices/state` | Dashboard (polling 20 dtk), Perangkat (saat tab diklik) |
+| Status & jadwal ruangan | `GET` | `/monitor/room-status` | Top bar (polling 60 dtk) |
+| Kirim perintah ke perangkat | `POST` | `/remote/devices/{id_perangkat}/commands` | Card dashboard (timeout 40 dtk) |
+
+Format respons: `{ "success": true, "data": {...} }` atau `{ "success": false, "message": "...", "code": "..." }`. `message` ditampilkan langsung ke pengguna.
+
+Tombol kontrol dibuat dari daftar `perintah` tiap perangkat yang dikirim API — aplikasi tidak menulis daftar perintah sendiri, jadi perintah baru muncul tanpa rilis ulang.
 
 ## Struktur folder
 
 ```
 lib/
-├── main.dart                     # lock landscape, immersive mode
-├── app.dart                      # MaterialApp.router + tema
-├── core/
-│   ├── config/env.dart           # --dart-define (API, MQTT, room)
-│   ├── constants/                # debounce, latency mock, endpoint, topik MQTT
-│   ├── feedback/app_feedback.dart# showAppToast() & showConfirmDialog()
-│   ├── layout/app_layout.dart    # ukuran tetap landscape (sidebar, grid 3 kolom, dll.)
-│   ├── realtime/                 # status koneksi server (+ stub client MQTT/WS)
-│   ├── router/                   # go_router, redirect login ↔ dashboard
-│   ├── session/                  # ruangan & meeting aktif
-│   ├── theme/                    # warna, gradasi, spacing, ThemeData
-│   └── utils/time_format.dart
-├── shared/layout/                # AppShell + widgets/ (side_nav, top_bar, connection_banner)
-└── features/
-    ├── auth/                     # login email + password
-    ├── dashboard/                # quick scene + grid 6 tile perangkat
-    │   └── presentation/widgets/tiles/   # tile_frame, tile_controls (lokal dashboard), 6 tile
-    ├── devices/                  # entity perangkat, controller perintah, manajemen perangkat
-    │   ├── domain/entities/      # Device (sealed) + AcDevice, IfpDevice, ... ; options enum
-    │   └── presentation/
-    │       ├── providers/room_devices_controller.dart  # execute / adjust / applyScene
-    │       ├── device_commands.dart                    # kirim perintah + toast
-    │       └── widgets/{common,setup}/                 # kontrol lokal + 6 panel setup
-    ├── scenes/                   # preset Mulai Meeting / Presentasi / Video Call / Selesai
-    ├── settings/                 # ruangan, koneksi, tampilan, keamanan, tentang
-    └── user/                     # profil, ubah password, kelola user, aktivitas
+├── main.dart                     # lock landscape, navigatorKey, handler 401
+├── helper/
+│   ├── global_var.dart           # baseUrl, navigatorKey
+│   └── loading_page.dart         # dialog loading
+├── pages/
+│   ├── splash_logo_screen.dart   # cek token → Dashboard / LoginRoom
+│   ├── login_room.dart           # input kode setup & pairing
+│   ├── dashboard.dart            # shell (sidebar, top bar) + konten dashboard
+│   └── devices_page.dart         # halaman Perangkat
+├── services/
+│   ├── api_services.dart         # wrapper HTTP (header, timeout, 401)
+│   ├── room_service.dart         # semua endpoint API di atas
+│   ├── storage_services.dart     # token di secure storage
+│   └── device_command_service.dart  # mock, hanya untuk Quick Scene
+└── l10n/                         # file lokalisasi (generate)
 ```
 
-## Aturan widget
+## Alur navigasi
 
-- **Tidak ada folder widget global.** Setiap fitur punya kontrolnya sendiri dengan parameter yang eksplisit. Contohnya `TileChoiceButton` dan `TileSlider` khusus dashboard, `OptionPills` dan `PanelStepper` khusus panel perangkat, `SettingsTile` dan `SettingsSegmented` khusus pengaturan. Mengubah satu halaman tidak memengaruhi halaman lain.
-- Yang dipakai bersama hanya **utilitas**, bukan komponen UI: tema, `AppLayout`, `showAppToast`, `showConfirmDialog`, dan helper perintah di `devices/presentation/device_commands.dart`.
+```
+SplashLogoPage ── ada token ──► DashboardPage
+      └──────── belum ────────► LoginRoom ── pairing berhasil ──► DashboardPage
 
-## Alur perintah perangkat
+DashboardPage (satu shell, isi diganti lewat state)
+  ├─ Dashboard
+  ├─ Perangkat  ◄── sidebar / klik card / "Kelola perangkat"
+  │                 tombol ← atau back Android → kembali ke Dashboard
+  └─ Keluar → hapus token → LoginRoom
 
-| Jenis | Method | Perilaku UI |
-|---|---|---|
-| Diskrit (saklar, mode, input) | `RoomDevicesController.execute` | Kontrol dikunci dan spinner tampil sampai perangkat merespons, lalu muncul toast berhasil/gagal |
-| Kontinu (slider, +/−) | `RoomDevicesController.adjust` | Nilai langsung berubah di UI, dikirim setelah debounce 700 ms, status "menyimpan…" |
-| Scene | `RoomDevicesController.applyScene` | Perangkat diatur satu per satu dengan progres "Menerapkan 2/4…" |
+API 401 di mana pun → hapus token → LoginRoom
+```
 
-Perintah ditolak dengan pesan error kalau server terputus atau perangkatnya offline. Untuk mencoba, buka **Pengaturan**, lalu nyalakan **Simulasi koneksi terputus**.
+## Status pengembangan
 
-## Prototype HTML
+Sudah tersambung ke API: pairing, data ruangan, status perangkat, jadwal ruangan, kirim perintah dari card dashboard.
 
-`prototype/index.html` adalah acuan visual yang bisa dibuka langsung di Chrome. Isinya disamakan dengan versi Flutter: landscape 1280×800, login email + password dengan akun demo yang sama. Prototype ini **tidak terhubung** ke kode Dart, jadi setiap perubahan desain harus diterapkan manual di kedua tempat.
+Belum / masih mock (ditandai `TODO` di kode):
+
+- Kirim perintah dari **halaman Perangkat** (tombol baru menampilkan pesan "belum tersedia").
+- **Quick Scene** di dashboard (belum ada di API remote, memakai `device_command_service.dart` mode mock).
+
+## Prototype desain
+
+`prototype/index.html` adalah acuan visual yang bisa dibuka langsung di browser (tablet landscape 1280×800). Prototype ini tidak terhubung ke kode Flutter; perubahan desain perlu diterapkan manual di kedua tempat.
