@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:smart_meeting_controller/helper/command_dialogs.dart';
 import 'package:smart_meeting_controller/services/room_service.dart';
 
 class DevicesPage extends StatefulWidget {
@@ -37,6 +38,12 @@ class _DevicesPageState extends State<DevicesPage> {
 
   /// id_perangkat yang sedang dibuka di panel.
   String? _selectedId;
+
+  /// id_perangkat yang sedang menunggu balasan perintah → label perintahnya.
+  final Map<String, String> _pending = {};
+
+  /// Nilai slider yang sedang digeser / dikirim, per "id_perangkat:kode".
+  final Map<String, double> _sliderDrafts = {};
 
   /// Alur hit API:
   /// 1. Halaman dibuka → GET /remote/room (daftar perangkat → tab), lalu
@@ -197,11 +204,83 @@ class _DevicesPageState extends State<DevicesPage> {
     _loadStates();
   }
 
-  // TODO: sambungkan ke RoomService.sendCommand (menyusul).
+  // ---------------- KIRIM PERINTAH ----------------
+
+  /// Tombol di panel selalu milik perangkat yang sedang dibuka.
   void _onCommandTap(Map<String, dynamic> perintah) {
-    _toast(
-      'Kirim perintah "${perintah['label']}" dari halaman ini belum tersedia.',
-    );
+    final device = _selected;
+    if (device != null) _runCommand(device, perintah);
+  }
+
+  /// POST /remote/devices/{id}/commands: konfirmasi (kalau diminta), isian
+  /// parameter (kalau ada & belum diisi), kirim, lalu tunggu hasilnya.
+  /// [parameter] diisi langsung oleh slider, jadi dialog isian dilewati.
+  Future<bool> _runCommand(
+    Map<String, dynamic> device,
+    Map<String, dynamic> perintah, {
+    Map<String, dynamic>? parameter,
+  }) async {
+    final id = device['id_perangkat'] as String;
+    final kode = perintah['kode'] as String;
+    final label = perintah['label']?.toString() ?? kode;
+    if (_pending.containsKey(id)) return false;
+
+    if (perintah['konfirmasi'] == true) {
+      final ok = await showConfirmDialog(
+        context,
+        title: '$label ${device['nama']}?',
+        message: 'Perintah akan langsung dikirim ke perangkat.',
+        confirmLabel: label,
+      );
+      if (!ok || !mounted) return false;
+    }
+
+    final paramSpec = perintah['parameter'];
+    if (parameter == null &&
+        paramSpec is Map<String, dynamic> &&
+        paramSpec.isNotEmpty) {
+      parameter = await showParameterDialog(
+        context,
+        label,
+        paramSpec,
+        state: _states[id],
+      );
+      if (parameter == null || !mounted) return false;
+    }
+
+    // Selama menunggu (bisa sampai 40 detik), tombol perangkat ini dikunci.
+    setState(() => _pending[id] = label);
+    final result =
+        await RoomService.sendCommand(id, kode, parameter: parameter);
+    if (!mounted) return false;
+    setState(() => _pending.remove(id));
+
+    if (result.success) {
+      _toast(result.message ?? '${device['nama']}: $label berhasil');
+      // Status setelah perintah (kalau dikirim mini PC), lalu muat ulang sekali.
+      final newState = result.data?['state'];
+      if (newState is Map<String, dynamic>) {
+        setState(() => _states[id] = {...?_states[id], ...newState});
+      }
+      _loadStates();
+      return true;
+    }
+
+    switch (result.code) {
+      case 'PERANGKAT_TIDAK_DITEMUKAN':
+        _toast(result.message!, error: true);
+        _loadRoom();
+      case 'MINIPC_TIMEOUT':
+        // Perintah mungkin tetap dijalankan, jangan langsung kirim ulang.
+        _toast(
+          '${result.message} Cek status perangkat sebelum mencoba lagi.',
+          error: true,
+        );
+        _loadStates();
+      default:
+        _toast(result.message!, error: true);
+    }
+    return false;
   }
 
   // ---------------- BUILD ----------------
@@ -483,6 +562,16 @@ class _DevicesPageState extends State<DevicesPage> {
     var icon = Icons.help_outline_rounded;
     var fg = Colors.grey.shade600;
     var bg = const Color(0xFFF7F7F8);
+    final pendingLabel = _pending[d['id_perangkat']];
+
+    if (pendingLabel != null) {
+      return _badge(
+        '$pendingLabel…',
+        Icons.sync_rounded,
+        const Color(0xFFB45309),
+        const Color(0xFFFFFBEB),
+      );
+    }
 
     if (state != null && state['dipantau'] == false) {
       label = 'Tidak dipantau';
@@ -510,6 +599,10 @@ class _DevicesPageState extends State<DevicesPage> {
       }
     }
 
+    return _badge(label, icon, fg, bg);
+  }
+
+  Widget _badge(String label, IconData icon, Color fg, Color bg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -576,12 +669,21 @@ class _DevicesPageState extends State<DevicesPage> {
             borderRadius: BorderRadius.circular(14),
           ),
           alignment: Alignment.center,
-          child: Icon(
-            _deviceIcon(d),
-            color: d['bisa_dikontrol'] == true
-                ? Colors.white
-                : Colors.grey.shade500,
-          ),
+          child: _pending.containsKey(d['id_perangkat'])
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: Colors.white,
+                  ),
+                )
+              : Icon(
+                  _deviceIcon(d),
+                  color: d['bisa_dikontrol'] == true
+                      ? Colors.white
+                      : Colors.grey.shade500,
+                ),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -723,12 +825,26 @@ class _DevicesPageState extends State<DevicesPage> {
         ),
     ];
 
+    // Selama perintah dikirim, semua kontrol perangkat ini dikunci & diredupkan.
+    final pending = _pending.containsKey(d['id_perangkat']);
     return [
-      if (daya != null) ...[
-        _powerCard(d, daya, state),
-        const SizedBox(height: 14),
-      ],
-      _tileGrid(tiles),
+      IgnorePointer(
+        ignoring: pending,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: pending ? 0.55 : 1,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (daya != null) ...[
+                _powerCard(d, daya, state),
+                const SizedBox(height: 14),
+              ],
+              _tileGrid(tiles),
+            ],
+          ),
+        ),
+      ),
     ];
   }
 
@@ -989,7 +1105,9 @@ class _DevicesPageState extends State<DevicesPage> {
               children: [
                 for (final p in [if (reset != null) reset, ...others])
                   _pill(
-                    icon: Icons.restart_alt_rounded,
+                    icon: _hasParameter(p)
+                        ? Icons.tune_rounded
+                        : Icons.restart_alt_rounded,
                     label: '${p['label']}',
                     selected: false,
                     onTap: () => _onCommandTap(p),
@@ -1097,31 +1215,54 @@ class _DevicesPageState extends State<DevicesPage> {
       .replaceAll(RegExp('[^a-z0-9]'), '')
       .toUpperCase();
 
-  /// Slider untuk perintah ber-parameter (mis. volume_set), berisi nilai saat ini.
-  /// `parameter.value.state` = key status untuk nilai awal (mis. "volume").
-  /// Hanya menampilkan nilai; kirim perintah menyusul.
+  /// Slider untuk perintah ber-parameter (mis. volume_set), mulai dari nilai
+  /// status saat ini (`parameter.value.state`, mis. "volume").
+  /// Nilai dikirim sekali saat slider dilepas.
   Widget _parameterSlider(
     Map<String, dynamic> p,
     Map<String, dynamic>? state,
   ) {
+    final device = _selected;
     final spec = p['parameter'] as Map<String, dynamic>;
-    final param = spec.values.first as Map<String, dynamic>;
+    final paramName = spec.keys.first;
+    final param = spec[paramName] as Map<String, dynamic>;
     final min = (param['min'] as num? ?? 0).toDouble();
     final max = (param['max'] as num? ?? 100).toDouble();
     final current = _isOnline(state) ? state![param['state']] as num? : null;
+    final key = '${device?['id_perangkat']}:${p['kode']}';
+    final value = (_sliderDrafts[key] ?? current ?? min).toDouble();
+
     return SliderTheme(
       data: SliderTheme.of(context).copyWith(
         trackHeight: 8,
+        activeTrackColor: const Color(0xFFD6322C),
+        inactiveTrackColor: const Color(0xFFF2F3F5),
+        thumbColor: const Color(0xFFD6322C),
         disabledActiveTrackColor: const Color(0xFFD6322C),
         disabledInactiveTrackColor: const Color(0xFFF2F3F5),
         disabledThumbColor: const Color(0xFFD6322C),
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
       ),
       child: Slider(
-        value: (current ?? min).toDouble().clamp(min, max),
+        value: value.clamp(min, max),
         min: min,
         max: max,
-        onChanged: null,
+        divisions: (max - min).round(),
+        label: '${value.round()}',
+        onChanged: device == null || !_isOnline(state)
+            ? null
+            : (v) => setState(() => _sliderDrafts[key] = v),
+        onChangeEnd: device == null || !_isOnline(state)
+            ? null
+            : (v) async {
+                await _runCommand(
+                  device,
+                  p,
+                  parameter: {paramName: v.round()},
+                );
+                // Berhasil: nilai ikut status terbaru. Gagal: kembali ke nilai lama.
+                if (mounted) setState(() => _sliderDrafts.remove(key));
+              },
       ),
     );
   }

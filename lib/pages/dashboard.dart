@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:smart_meeting_controller/helper/command_dialogs.dart';
 import 'package:smart_meeting_controller/pages/devices_page.dart';
 import 'package:smart_meeting_controller/pages/login_room.dart';
-import 'package:smart_meeting_controller/services/device_command_service.dart';
 import 'package:smart_meeting_controller/services/room_service.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -41,6 +41,45 @@ class _DashboardPageState extends State<DashboardPage>
   /// ID perangkat / scene yang sedang menunggu balasan perintah,
   /// beserta label perintahnya untuk ditampilkan (mis. "Nyalakan").
   final Map<String, String> _pending = {};
+
+  /// Quick Scene, dirakit di aplikasi dari perintah perangkat yang tersedia.
+  /// [steps] = urutan kode perintah; perangkat yang tidak punya kode itu dilewati.
+  static const _scenes = [
+    (
+      key: 'meeting',
+      title: 'Mulai Meeting',
+      icon: Icons.play_arrow_rounded,
+      desc: 'IFP menyala, input HDMI 1, suara aktif',
+      steps: ['power_on', 'input_hdmi1', 'unmute'],
+    ),
+    (
+      key: 'present',
+      title: 'Presentasi',
+      icon: Icons.co_present_outlined,
+      desc: 'IFP menyala, mode gambar cerah',
+      steps: ['power_on', 'picture_bright'],
+    ),
+    (
+      key: 'video',
+      title: 'Video Call',
+      icon: Icons.videocam_outlined,
+      desc: 'IFP menyala, input Android, suara aktif',
+      steps: ['power_on', 'input_android', 'unmute'],
+    ),
+    (
+      key: 'end',
+      title: 'Selesai',
+      icon: Icons.power_settings_new_rounded,
+      desc: 'Matikan semua perangkat',
+      steps: ['power_off'],
+    ),
+  ];
+
+  /// Scene yang terakhir diterapkan; hilang kalau perangkat diubah manual.
+  String? _activeScene;
+
+  /// Scene yang sedang dijalankan beserta progresnya ("Menerapkan 2/4…").
+  ({String key, int done, int total})? _sceneRun;
 
   // Data dari GET /api/v1/remote/devices/state, per id_perangkat.
   // Kosong = status belum/tidak diketahui (mis. mini PC tidak terhubung).
@@ -238,19 +277,25 @@ class _DashboardPageState extends State<DashboardPage>
     if (_pending.containsKey(id)) return;
 
     if (perintah['konfirmasi'] == true) {
-      final ok = await _confirm(
+      final ok = await showConfirmDialog(
+        context,
         title: '$label ${device['nama']}?',
         message: 'Perintah akan langsung dikirim ke perangkat.',
         confirmLabel: label,
       );
-      if (!ok) return;
+      if (!ok || !mounted) return;
     }
 
     Map<String, dynamic>? parameter;
     final paramSpec = perintah['parameter'];
     if (paramSpec is Map<String, dynamic> && paramSpec.isNotEmpty) {
-      parameter = await _askParameter(label, paramSpec);
-      if (parameter == null) return;
+      parameter = await showParameterDialog(
+        context,
+        label,
+        paramSpec,
+        state: _states[id],
+      );
+      if (parameter == null || !mounted) return;
     }
 
     setState(() => _pending[id] = label);
@@ -262,10 +307,14 @@ class _DashboardPageState extends State<DashboardPage>
     if (result.success) {
       _toast(result.message ?? '${device['nama']}: $label berhasil');
       // Status setelah perintah (kalau dikirim mini PC), lalu muat ulang sekali.
+      // Perangkat diubah manual → scene tidak lagi "Sedang aktif".
       final newState = result.data?['state'];
-      if (newState is Map<String, dynamic>) {
-        setState(() => _states[id] = {...?_states[id], ...newState});
-      }
+      setState(() {
+        if (newState is Map<String, dynamic>) {
+          _states[id] = {...?_states[id], ...newState};
+        }
+        _activeScene = null;
+      });
       _loadStates();
       return;
     }
@@ -286,127 +335,126 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
-  Future<bool> _confirm({
-    required String title,
-    required String message,
-    required String confirmLabel,
-  }) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Batal'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFD6322C),
-            ),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
+  // ---------------- QUICK SCENE ----------------
+
+  /// Perintah yang tidak perlu dikirim karena status perangkat sudah sesuai.
+  bool _alreadyApplied(String kode, Map<String, dynamic>? state) {
+    if (state == null || state['online'] != true) return false;
+    if (kode.startsWith('input_') && state['input'] != null) {
+      return _inputKey(kode) == _inputKey('${state['input']}');
+    }
+    return switch (kode) {
+      'power_on' => state['daya'] == 'on',
+      'power_off' => state['daya'] == 'off',
+      'unmute' => state['bisu'] == false,
+      'mute' => state['bisu'] == true,
+      _ => false,
+    };
   }
 
-  /// Dialog isian untuk perintah ber-parameter, mis. volume_set → { value: 30 }.
-  /// Saat ini hanya tipe `integer` (slider min..max).
-  Future<Map<String, dynamic>?> _askParameter(
-    String title,
-    Map<String, dynamic> spec,
+  /// Jalankan scene: kirim perintah satu per satu ke perangkat yang punya
+  /// perintahnya (POST /remote/devices/{id}/commands), seperti di prototype.
+  Future<void> _runScene(
+    ({
+      String key,
+      String title,
+      IconData icon,
+      String desc,
+      List<String> steps,
+    }) scene,
   ) async {
-    final values = <String, double>{};
-    for (final entry in spec.entries) {
-      final p = entry.value as Map<String, dynamic>;
-      if (p['tipe'] != 'integer') {
-        _toast(
-          'Jenis isian "${p['tipe']}" belum didukung aplikasi.',
-          error: true,
-        );
-        return null;
-      }
-      values[entry.key] = (p['min'] as num? ?? 0).toDouble();
+    if (_sceneRun != null || _pending.isNotEmpty) return;
+
+    if (scene.key == 'end') {
+      final ok = await showConfirmDialog(
+        context,
+        title: 'Akhiri meeting?',
+        message: 'Semua perangkat akan dimatikan. Pastikan tidak ada peserta '
+            'yang masih menggunakan ruangan.',
+        confirmLabel: 'Matikan semua',
+      );
+      if (!ok || !mounted) return;
     }
 
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(title),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final entry in spec.entries) ...[
-                Builder(
-                  builder: (context) {
-                    final p = entry.value as Map<String, dynamic>;
-                    final min = (p['min'] as num? ?? 0).toDouble();
-                    final max = (p['max'] as num? ?? 100).toDouble();
-                    final value = values[entry.key]!;
-                    return Column(
-                      children: [
-                        Row(
-                          children: [
-                            Text(p['label']?.toString() ?? entry.key),
-                            const Spacer(),
-                            Text(
-                              '${value.round()}',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
-                        Slider(
-                          value: value,
-                          min: min,
-                          max: max,
-                          divisions: (max - min).round(),
-                          activeColor: const Color(0xFFD6322C),
-                          onChanged: (v) =>
-                              setDialogState(() => values[entry.key] = v),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Batal'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFD6322C),
-              ),
-              child: const Text('Kirim'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (ok != true) return null;
-    return values.map((key, v) => MapEntry(key, v.round()));
-  }
+    // Susun langkah: perangkat yang bisa dikontrol & tidak offline, perintah
+    // yang tersedia di `perintah` perangkat itu, dan yang belum sesuai status.
+    final plan = <(Map<String, dynamic>, Map<String, dynamic>)>[];
+    var matched = 0;
+    for (final d in _devices) {
+      if (d['bisa_dikontrol'] != true) continue;
+      final state = _states[d['id_perangkat']];
+      if (state != null &&
+          (state['dipantau'] == false || state['online'] != true)) {
+        continue;
+      }
+      var hasStep = false;
+      for (final kode in scene.steps) {
+        final p = _findPerintah(d, kode);
+        if (p == null) continue;
+        hasStep = true;
+        if (!_alreadyApplied(kode, state)) plan.add((d, p));
+      }
+      if (hasStep) matched++;
+    }
 
-  // TODO: scene belum ada di API remote, masih pakai mock DeviceCommandService.
-  Future<void> _runScene(DeviceCommand command, String title) async {
-    if (_pending.containsKey(command.code)) return;
-    setState(() => _pending[command.code] = title);
-    final result = await DeviceCommandService.send(command.code, command);
-    if (!mounted) return;
-    setState(() => _pending.remove(command.code));
-    result.success
-        ? _toast('Scene "$title" diterapkan')
-        : _toast(result.message, error: true);
+    if (plan.isEmpty) {
+      if (matched > 0) {
+        setState(() => _activeScene = scene.key == 'end' ? null : scene.key);
+        _toast('Perangkat sudah sesuai scene "${scene.title}"');
+      } else {
+        _toast(
+          'Tidak ada perangkat online yang bisa diatur untuk scene ini.',
+          error: true,
+        );
+      }
+      return;
+    }
+
+    setState(() => _sceneRun = (key: scene.key, done: 0, total: plan.length));
+    final failures = <String>[];
+    final failedDevices = <String>{};
+
+    for (final (d, p) in plan) {
+      final id = d['id_perangkat'] as String;
+      // Kalau perintah sebelumnya ke perangkat ini gagal (mis. gagal menyala),
+      // langkah berikutnya untuk perangkat itu dilewati.
+      if (!failedDevices.contains(id)) {
+        setState(() => _pending[id] = '${p['label']}');
+        final result = await RoomService.sendCommand(id, '${p['kode']}');
+        if (!mounted) return;
+        setState(() {
+          _pending.remove(id);
+          final newState = result.data?['state'];
+          if (result.success && newState is Map<String, dynamic>) {
+            _states[id] = {...?_states[id], ...newState};
+          }
+        });
+        if (!result.success) {
+          failedDevices.add(id);
+          failures.add(result.message ?? 'Perintah ${p['label']} gagal');
+        }
+      }
+      setState(() {
+        final run = _sceneRun!;
+        _sceneRun = (key: run.key, done: run.done + 1, total: run.total);
+      });
+    }
+
+    final deviceCount = plan.map((e) => e.$1['id_perangkat']).toSet().length;
+    setState(() {
+      _sceneRun = null;
+      if (failures.isEmpty) {
+        _activeScene = scene.key == 'end' ? null : scene.key;
+      }
+    });
+    failures.isEmpty
+        ? _toast('Scene "${scene.title}" diterapkan ke $deviceCount perangkat')
+        : _toast(
+            'Scene "${scene.title}": ${failures.length} perintah gagal. '
+            '${failures.first}',
+            error: true,
+          );
+    _loadStates();
   }
 
   // ---------------- NAVIGASI ----------------
@@ -444,7 +492,8 @@ class _DashboardPageState extends State<DashboardPage>
 
   /// Keluar dari ruangan: hapus token, kembali ke halaman input kode.
   Future<void> _logout() async {
-    final ok = await _confirm(
+    final ok = await showConfirmDialog(
+      context,
       title: 'Keluar dari ruangan?',
       message: 'Perangkat di ruangan tetap berjalan. '
           'Anda perlu memasukkan kode setup lagi untuk mengendalikannya.',
@@ -859,31 +908,7 @@ class _DashboardPageState extends State<DashboardPage>
           builder: (context, constraints) {
             final isWide = constraints.maxWidth > 700;
             final cards = [
-              _quickSceneCard(
-                command: DeviceCommand.sceneStartMeeting,
-                icon: Icons.play_arrow_rounded,
-                title: 'Mulai Meeting',
-                subtitle: 'Sedang aktif',
-                highlighted: true,
-              ),
-              _quickSceneCard(
-                command: DeviceCommand.scenePresentation,
-                icon: Icons.co_present_outlined,
-                title: 'Presentasi',
-                subtitle: 'Lampu redup 40%, l...',
-              ),
-              _quickSceneCard(
-                command: DeviceCommand.sceneVideoCall,
-                icon: Icons.videocam_outlined,
-                title: 'Video Call',
-                subtitle: 'Kamera & mic aktif, ...',
-              ),
-              _quickSceneCard(
-                command: DeviceCommand.sceneEndMeeting,
-                icon: Icons.power_settings_new_rounded,
-                title: 'Selesai',
-                subtitle: 'Matikan semua & ku...',
-              ),
+              for (final scene in _scenes) _quickSceneCard(scene),
             ];
 
             if (isWide) {
@@ -913,16 +938,29 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _quickSceneCard({
-    required DeviceCommand command,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    bool highlighted = false,
-  }) {
-    final loading = _pending.containsKey(command.code);
+  Widget _quickSceneCard(
+    ({
+      String key,
+      String title,
+      IconData icon,
+      String desc,
+      List<String> steps,
+    }) scene,
+  ) {
+    final run = _sceneRun;
+    final loading = run?.key == scene.key;
+    // Kartu merah = scene yang sedang aktif (seperti prototype).
+    final highlighted = _activeScene == scene.key && !loading;
+    final icon = scene.icon;
+    final title = scene.title;
+    final subtitle = loading
+        ? 'Menerapkan ${run!.done}/${run.total}…'
+        : highlighted
+            ? 'Sedang aktif'
+            : scene.desc;
     return InkWell(
-      onTap: () => _runScene(command, title),
+      // Selama scene berjalan, semua kartu scene dikunci.
+      onTap: run != null ? null : () => _runScene(scene),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(16),

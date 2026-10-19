@@ -64,11 +64,20 @@ Riwayat pekerjaan di aplikasi **superApp Smart Meeting**, diurutkan per tanggal.
 | 32 | Menulis ulang `README.md`, commit, dan push ke GitHub | ✅ | `README.md`, `.gitignore` |
 | 33 | Membuat daftar pekerjaan ini | ✅ | `TASKS.md` |
 
+## 19 Oktober 2026
+
+| # | Pekerjaan | Status | File |
+|---|---|---|---|
+| 34 | Kirim perintah dari halaman Perangkat sesuai API remote v0.6 (`POST /remote/devices/{id}/commands`): konfirmasi, isian parameter, loading & kunci kontrol, status terbaru setelah perintah, penanganan kode galat. Desain tidak berubah | ✅ | `lib/pages/devices_page.dart` |
+| 35 | Slider volume di halaman Perangkat bisa digeser; nilai dikirim (`volume_set`) saat slider dilepas | ✅ | `lib/pages/devices_page.dart` |
+| 36 | Dukungan perintah baru v0.6 `contrast_set` / `brightness_set` (dialog isian berisi nilai saat ini) | ✅ | `lib/pages/devices_page.dart` |
+| 37 | Dialog konfirmasi & isian parameter dipindah ke helper bersama, dipakai dashboard dan halaman Perangkat | ✅ | `lib/helper/command_dialogs.dart`, `lib/pages/dashboard.dart` |
+| 38 | Quick Scene mengikuti prototype (kartu aktif, "Menerapkan 2/4…", konfirmasi "Akhiri meeting?") dan dirakit di aplikasi dari perintah API asli | ✅ | `lib/pages/dashboard.dart` |
+
 ---
 
 ## Belum dikerjakan
 
-- Kirim perintah dari **halaman Perangkat** (tombol masih menampilkan pesan "belum tersedia").
-- **Quick Scene** di dashboard masih mock; belum ada endpoint scene di API remote.
+- Endpoint scene di API remote (saat ini scene dirakit di aplikasi). Scene "Selesai" belum bisa mengunci pintu karena API pintu hanya punya `open_door`.
 - Package yang tidak dipakai di `pubspec.yaml` (`flutter_riverpod`, `go_router`, `dio`, `mqtt_client`, `web_socket_channel`, `google_fonts`) belum dihapus.
 - Versi `intl: any` di `pubspec.yaml` sebaiknya dikunci ke versi tertentu.

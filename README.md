@@ -47,7 +47,7 @@ Base: `{APP_URL}/api/v1`. Semua endpoint selain pairing memakai `Authorization: 
 | Data ruangan + daftar perangkat & perintah | `GET` | `/remote/room` | Dashboard, Perangkat |
 | Status perangkat (langsung dari mini PC) | `GET` | `/remote/devices/state` | Dashboard (polling 20 dtk), Perangkat (saat tab diklik) |
 | Status & jadwal ruangan | `GET` | `/monitor/room-status` | Top bar (polling 60 dtk) |
-| Kirim perintah ke perangkat | `POST` | `/remote/devices/{id_perangkat}/commands` | Card dashboard (timeout 40 dtk) |
+| Kirim perintah ke perangkat | `POST` | `/remote/devices/{id_perangkat}/commands` | Card dashboard, halaman Perangkat (timeout 40 dtk) |
 
 Format respons: `{ "success": true, "data": {...} }` atau `{ "success": false, "message": "...", "code": "..." }`. `message` ditampilkan langsung ke pengguna.
 
@@ -60,6 +60,7 @@ lib/
 ├── main.dart                     # lock landscape, navigatorKey, handler 401
 ├── helper/
 │   ├── global_var.dart           # baseUrl, navigatorKey
+│   ├── command_dialogs.dart      # dialog konfirmasi & isian parameter perintah
 │   └── loading_page.dart         # dialog loading
 ├── pages/
 │   ├── splash_logo_screen.dart   # cek token → Dashboard / LoginRoom
@@ -70,7 +71,7 @@ lib/
 │   ├── api_services.dart         # wrapper HTTP (header, timeout, 401)
 │   ├── room_service.dart         # semua endpoint API di atas
 │   ├── storage_services.dart     # token di secure storage
-│   └── device_command_service.dart  # mock, hanya untuk Quick Scene
+│   └── device_command_service.dart  # daftar perintah lama (belum dipakai), disimpan untuk referensi
 └── l10n/                         # file lokalisasi (generate)
 ```
 
@@ -91,12 +92,9 @@ API 401 di mana pun → hapus token → LoginRoom
 
 ## Status pengembangan
 
-Sudah tersambung ke API: pairing, data ruangan, status perangkat, jadwal ruangan, kirim perintah dari card dashboard.
+Sudah tersambung ke API (remote v0.6): pairing, data ruangan, status perangkat, jadwal ruangan, kirim perintah dari card dashboard dan halaman Perangkat.
 
-Belum / masih mock (ditandai `TODO` di kode):
-
-- Kirim perintah dari **halaman Perangkat** (tombol baru menampilkan pesan "belum tersedia").
-- **Quick Scene** di dashboard (belum ada di API remote, memakai `device_command_service.dart` mode mock).
+Quick Scene belum punya endpoint di API, jadi **dirakit di aplikasi**: tiap scene adalah urutan kode perintah (mis. `power_on` → `input_hdmi1` → `unmute`) yang dikirim satu per satu ke perangkat yang punya perintah itu. Daftarnya di `_scenes` (`lib/pages/dashboard.dart`).
 
 ## Prototype desain
 

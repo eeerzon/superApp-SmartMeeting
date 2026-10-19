@@ -103,8 +103,7 @@ class CommandResult {
 class DeviceCommandService {
   /// `true` selama endpoint backend belum siap: perintah hanya disimulasikan.
   static bool useMock = true;
-
-  // TODO: sesuaikan path & format body dengan endpoint dari tim backend.
+  
   static const _endpoint = '/api/devices/command';
 
   static const _mockDelay = Duration(milliseconds: 650);
